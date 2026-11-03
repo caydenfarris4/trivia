@@ -6,8 +6,8 @@ ALWAYS eyeball the results: the top search hit is usually right, but not always.
 """
 import csv, re, time, requests
 
-# Wikimedia asks for a descriptive User-Agent with a way to contact you. Edit this line.
-HEADERS = {"User-Agent": "GlobeTrottersTrivia/1.0 (youremail@example.com)"}
+# Wikimedia asks for a descriptive User-Agent with a way to contact you.
+HEADERS = {"User-Agent": "GlobeTrottersTrivia/1.0 (caydenfarris2@gmail.com)"}
 WIKI = "https://en.wikipedia.org/w/api.php"
 COMMONS = "https://commons.wikimedia.org/w/api.php"
 

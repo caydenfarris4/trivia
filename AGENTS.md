@@ -41,11 +41,15 @@ Flow: **setup (host picks Globe Trotters) → lobby → (guess → reveal) × N 
 5. Reveal: host screen shows a Leaflet map with the answer (⭐ + radius circle), all pins, dashed lines, a ranked list, the blurb and photo credit. Phones show their own distance, points and rank. The host clicks **Next Round ▸** to send the next place.
 6. After the last round: podium on the host screen, final rank on phones. **Play Again** returns to the lobby with the same players and zeroed scores.
 
-**Scoring (owner-specified, do not change without asking):**
+**Scoring (owner-specified, do not change without asking).** A round is worth up to **5,000**, half for knowing what the place is and half for the pin:
 ```
-score = round(5000 * exp(-max(0, dist_km - radius_km) / 1500))
+name part = 2500 if the player picked the right name out of the 4 choices, else 0
+pin part  = round(2500 * exp(-max(0, dist_km - radius_km) / 1500))
+round score = name part + pin part
 ```
-`dist_km` is great-circle (haversine, R = 6371). `radius_km` comes from the CSV so big places (Sahara) are forgiving. **Speed does not affect score** (the formula is distance only). A speed bonus was offered but not requested.
+- **The 4 choices:** each round the phones show 4 place names (the right one + 3 others, chosen from the same kind of place first, then the same continent, then anywhere), in a random order. The choices are made when the game starts and saved with it. Players must pick a name **and** drop a pin before the Lock-in button works (at timeout, whatever they have set still counts). The two parts are independent: right name with a far pin still gets the 2,500.
+- `dist_km` is great-circle (haversine, R = 6371). `radius_km` comes from the CSV so big places (Sahara) are forgiving. **Speed does not affect score.** A speed bonus was offered but not requested.
+- The server sends the choices (they contain the right name by design) but never says which one is right before the reveal.
 
 The answer's coordinates are **never sent to clients before the reveal**. Keep it that way.
 
@@ -164,12 +168,12 @@ Routes:
 | `POST /api/host/{settings,start,reveal,next,again}?code=` | host (`x-token` header) | control the game. `settings` (lobby only) accepts `game` (`jeopardy`/`globetrotters`/`spotthefake`/`crowdcontrol`: **which game this code is for**, default `globetrotters`), `max` (4–20 players), `teams` (0 or 2–6), and the Globe Trotters options. `start` only works when `game` is `globetrotters` (the other three are run from the host screen, so their room stays in `lobby` while the host plays). `again` resets the room to the lobby from any phase |
 | `POST /api/host/teams?code=` `{shuffle:true}` or `{move:{pid,team}}` | host (`x-token`), lobby only | rearrange teams |
 | `POST /api/join` `{code,name}` | player | → `{pid, token, name, code}`; duplicate names get a number suffix |
-| `POST /api/guess?code=` `{pid,token,lat,lon,lock}` | player | updates pin; `lock:true` locks it and may end the round early. Longitude is wrapped into [-180,180) |
+| `POST /api/guess?code=` `{pid,token,choice?,lat?,lon?,lock?}` | player | `choice` (0-3) = the name picked, `lat`/`lon` = the pin (each optional, sent as they change); `lock:true` locks the guess and may end the round early. Longitude is wrapped into [-180,180) |
 | `GET /api/events?code=&role=host&token=…` / `?code=&role=player&pid=…&token=…` | SSE | pushes a full state snapshot (`view(role,pid)`) on every change |
 
 State machine: `lobby → guess → reveal → guess … → end`, with `again` returning `end/reveal → lobby`. Every phase change calls `broadcast()`. Unlocked-pin updates do **not** broadcast (only locks do).
 
-Snapshot shape (key fields): `now, phase, code, settings, players[{id,name,color,score,locked,connected,team}], teams (null or [{id,name,color,members,score,last}]), idx, total, deadline, prompt{category,name|null,image|null}`; in `reveal` also `answer{name,country,lat,lon,radius,blurb,credit}` and `results[]`; for players `me{…,guess,last,rank,of}`; for host `categories, count`. Clients compute countdowns from `deadline` and the `now` offset (`off = st.now - Date.now()`), so device clock skew doesn't matter. The join address shown in the lobby is the host page's own `location.origin`.
+Snapshot shape (key fields): `now, phase, code, settings, players[{id,name,color,score,locked,connected,team}], teams (null or [{id,name,color,members,score,last}]), idx, total, deadline, prompt{category,name|null,image,options[4 names]|null}`; in `reveal` also `answer{name,country,lat,lon,radius,blurb,credit}` and `results[]` (each with `pts`, `pinPts`, `namePts`, `correct`, `picked`); for players `me{…,guess,last,rank,of}`; for host `categories, count`. Clients compute countdowns from `deadline` and the `now` offset (`off = st.now - Date.now()`), so device clock skew doesn't matter. The join address shown in the lobby is the host page's own `location.origin`.
 
 The Globe Trotters bank is parsed once when the Worker starts, so **editing the CSV needs a deploy** (a push to `main`). The Worker drops rows without valid `lat`/`lon`.
 
@@ -180,7 +184,7 @@ Sections `s-join`, `s-wait`, `s-play`, `s-end`. One Leaflet map instance reused 
 
 - **Jeopardy:** the source CSV is `game,category,points,clue,answer`, with `Final` as the points value and a `Final Jeopardy: <topic>` category for each game's final. A one-off converter was used to produce `public/banks/jeopardy.js`; to regenerate from a new CSV, parse it the same way (respect quoted commas) and write `{boards:[{name,dailyDoubles,categories:[{name,clues:[{v,q,a}]}],final:{category,q,a}}]}`.
 - **Spot the Fake / Crowd Control:** edit the arrays in the bank files; formats are in each file's header.
-- **Globe Trotters:** edit `public/banks/globetrotters_bank.csv`. `radius_km` is the "close enough" zone (0 penalty inside it). **Photos are required** (the game is photo-only): run `cd public/banks && python fetch_images.py` (set a real contact email in its User-Agent first; needs `pip install requests` and internet), **review the output** because the top Wikipedia hit isn't always the right picture (delete or fix bad rows; rows with no `image_url` are skipped), then commit `globetrotters_images.csv` and deploy. Override one photo with your own file in `public/img/` and its filename in the `image_file` column. As of the last check **no place has a photo yet**, so Globe Trotters cannot start until this is done.
+- **Globe Trotters:** edit `public/banks/globetrotters_bank.csv`. `radius_km` is the "close enough" zone (0 penalty inside it). **Photos are required** (the game is photo-only): run `cd public/banks && python fetch_images.py` (the owner's contact email is already set in its User-Agent; needs `pip install requests` and internet), **review the output** because the top Wikipedia hit isn't always the right picture (delete or fix bad rows; rows with no `image_url` are skipped), then commit `globetrotters_images.csv` and deploy. Override one photo with your own file in `public/img/` and its filename in the `image_file` column. Current state: the owner ran the script and committed the file; **99 of the 100 places have a photo** (place 72, Sossusvlei Dunes, has none and is skipped). About 18 photos matched a Wikipedia article with a different title than the place (e.g. #20 Stonehenge matched "United Kingdom", #41 Na Pali Coast matched "Kailua, Hawaii", #58 Havasu Falls matched "Arizona", #94 Faroe Islands matched "List of tunnels of the Faroe Islands"); check those images before relying on them.
 - **Accuracy rule (owner requirement):** content you write (Spot the Fake, Crowd Control, blurbs) must be factually right. Prefer stable facts; avoid anything that changes yearly. Do **not** silently change the owner's clues; flag doubts instead. Known unverified owner clues (Game 3 Reality TV: *The Traitors: New Blood*, Survivor 51 "blood ring", Rob Rausch winning Traitors S4) were reported to the owner for checking.
 
 ## 7. Testing
@@ -213,7 +217,7 @@ Tips: `wrangler dev` rewrites the request's host name to the route in `wrangler.
 - Host resume after a page refresh or re-login (a refresh still creates a new room; the old game's code stops working).
 - Move the Auth/Game data to a nicer admin view, rate-limit joins, scheduled cleanup of old game objects (finished games are replaced, not deleted, until the next game starts).
 - Change-password screen, and more than one host account (invite).
-- **Run `fetch_images.py`, review the photos and commit `globetrotters_images.csv`: required before Globe Trotters can be played** (it is photo-only). This sandbox cannot reach Wikipedia, so it has to be run on a machine with internet.
+- Review the Globe Trotters photos (about 18 matched a differently titled Wikipedia article, see §6) and find a photo for #72 Sossusvlei Dunes. Photos can only be fetched on a machine with internet (this sandbox cannot reach Wikipedia).
 - Optional speed bonus (Kahoot-style) in `endRound` scoring.
 - QR code for the join address in the Globe Trotters lobby.
 - Let phones also join Spot the Fake / Crowd Control (currently host-run).

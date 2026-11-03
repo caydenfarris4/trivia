@@ -37,6 +37,13 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .rows{display:grid;gap:5px;max-width:420px;margin:12px auto;width:100%}
 .rows div{display:flex;justify-content:space-between;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 12px}
 .rows .me{background:var(--gold);color:#000;font-weight:800}
+#opts{display:none;grid-template-columns:1fr 1fr;gap:6px;padding:6px 10px;background:rgba(0,0,40,.7)}
+#opts.on{display:grid}
+#opts button{font-family:inherit;font-weight:700;font-size:clamp(13px,3.6vw,16px);line-height:1.15;color:#fff;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);border-radius:10px;padding:8px 6px;min-height:44px}
+#opts button.sel{background:var(--gold);color:#000;border-color:#fff}
+#opts button:disabled{opacity:.55}
+#opts button.sel:disabled{opacity:1}
+.res .line{margin-top:3px}.res .good{color:var(--good)}.res .bad{color:var(--bad)}
 .dot{width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 6px #000}
 .tbadge{display:inline-block;font-family:Impact,sans-serif;letter-spacing:2px;text-transform:uppercase;color:#000;border-radius:99px;padding:4px 16px;font-size:22px}
 .hostlink{color:var(--mute);font-size:14px;margin-top:10px}
@@ -66,6 +73,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
   <div class="top"><span id="rnd"></span><span id="tm"></span></div>
   <div class="bar"><i id="fill"></i></div>
   <div class="prompt" id="prompt"></div>
+  <div id="opts"></div>
   <div id="map"></div>
   <div class="foot" id="foot"></div>
 </section>
@@ -84,7 +92,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 'use strict';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,iv=null,view='';
+let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,choice=null,iv=null,view='';
 try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
 const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
 const myTeam=()=>st&&st.teams&&st.me&&st.me.team!=null?st.teams[st.me.team]:null;
@@ -125,16 +133,28 @@ function setPin(lat,lon){
   renderFoot();
 }
 
+function drawOptions(){ // the 4 names to choose from: knowing what the place is = half the points
+  const o=$('#opts'),opts=(st.prompt&&st.prompt.options)||[],locked=st.me&&st.me.locked;
+  o.classList.add('on');
+  o.innerHTML=opts.map((t,i)=>`<button data-i="${i}" class="${choice===i?'sel':''}" ${locked?'disabled':''}>${esc(t)}</button>`).join('');
+  o.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    if(st.me&&st.me.locked)return;
+    choice=+b.dataset.i;drawOptions();renderFoot();
+    fetch('/api/guess?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,choice})});
+  });
+}
 function renderFoot(){
   const f=$('#foot');
   if(st.phase==='guess'){
-    const locked=st.me&&st.me.locked;
+    const locked=st.me&&st.me.locked,ready=pin&&choice!=null;
+    const label=ready?'Lock in guess':choice==null&&!pin?'Pick the place, then drop a pin':choice==null?'Now pick what the place is ↑':'Now tap the map to drop your pin';
     f.innerHTML=locked?`<button class="btn" disabled>Locked in ✓ Waiting for others…</button>`
-      :`<button class="btn good" id="lock" ${pin?'':'disabled'}>${pin?'Lock in guess':'Tap the map to drop a pin'}</button>`;
+      :`<button class="btn good" id="lock" ${ready?'':'disabled'}>${label}</button>`;
     const b=$('#lock');if(b)b.onclick=()=>{
       b.disabled=true;
-      fetch('/api/guess?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:pin.lat,lon:pin.lon,lock:true})});
+      fetch('/api/guess?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:pin.lat,lon:pin.lon,choice,lock:true})});
     };
+    if($('#opts').classList.contains('on'))drawOptions();
   }
 }
 
@@ -163,9 +183,10 @@ function render(){
   const key=st.phase+st.idx;
   if(st.phase==='guess'){
     if(view!==key){
-      view=key;pin=null;layer.clearLayers();map.setView([20,10],2);
+      view=key;pin=null;choice=st.me.choice==null?null:st.me.choice;layer.clearLayers();map.setView([20,10],2);
       const p=st.prompt;
-      $('#prompt').innerHTML=(p.image?`<img src="${esc(p.image)}" alt="" onerror="this.remove()">`:'')+`<div><small>${esc(p.category.toUpperCase())}</small><h2>${p.name?esc(p.name):'Where in the world is this?'}</h2></div>`;
+      $('#prompt').innerHTML=(p.image?`<img src="${esc(p.image)}" alt="" onerror="this.remove()">`:'')+`<div><small>${esc(p.category.toUpperCase())}</small><h2>${p.name?esc(p.name):'What is this place?'}</h2></div>`;
+      drawOptions();
       if(st.me.guess)setPin(st.me.guess.lat,st.me.guess.lon);
       clearInterval(iv);
       const tot=(st.deadline-st.now)||1;
@@ -179,6 +200,7 @@ function render(){
     renderFoot();
   }else if(st.phase==='reveal'&&view!==key){
     view=key;clearInterval(iv);$('#tm').textContent='';$('#fill').style.width='0';
+    $('#opts').classList.remove('on');setTimeout(()=>map.invalidateSize(),50);
     layer.clearLayers();
     const a=st.answer,pts=[[a.lat,a.lon]];
     L.circle([a.lat,a.lon],{radius:Math.max(a.radius,0.3)*1000,color:'#2fd573',weight:2,fillOpacity:.15}).addTo(layer);
@@ -190,10 +212,12 @@ function render(){
       L.polyline([[mine.lat,mine.lon],[a.lat,a.lon]],{color:'#fff',dashArray:'6 6',weight:2}).addTo(layer);
     }
     map.fitBounds(pts,{padding:[50,50],maxZoom:8});
-    const l=st.me.last||{dist:null,pts:0};
+    const l=st.me.last||{dist:null,pts:0,pinPts:0,namePts:0,correct:false,picked:null};
     const bull=l.dist!=null&&l.dist<=a.radius;
     $('#foot').innerHTML=`<div class="res"><div class="big">+${l.pts.toLocaleString()}</div>
-      <div>${l.dist==null?'No guess this round':(bull?'🎯 Bullseye!':fmtKm(l.dist)+' km away')} · it was <b>${esc(a.name)}</b>, ${esc(a.country)}</div>
+      <div class="line ${l.correct?'good':'bad'}">${l.correct?'✅ You knew it!':l.picked?'❌ You picked '+esc(l.picked):'❌ No name picked'} · +${(l.namePts||0).toLocaleString()}</div>
+      <div class="line">${l.dist==null?'📍 No pin dropped':(bull?'🎯 Bullseye!':'📍 '+fmtKm(l.dist)+' km away')} · +${(l.pinPts||0).toLocaleString()}</div>
+      <div class="line">It was <b>${esc(a.name)}</b>, ${esc(a.country)}</div>
       <div class="sm">#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts total</div>
       ${myTeam()?`<div class="sm">Team ${esc(myTeam().name)}: #${teamRank(myTeam())} of ${st.teams.length} · ${myTeam().score.toLocaleString()} pts (+${myTeam().last.toLocaleString()})</div>`:''}</div>`;
     $('#prompt').innerHTML=`<div><small>${esc(a.country.toUpperCase())}</small><h2>${esc(a.name)}</h2><div class="sub" style="font-size:13px">${esc(a.blurb||'')}</div></div>`;
