@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Globe Trotters</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--bg:#050826;--gold:#ffcf3a;--gold2:#ff9d1c;--mute:#9fb0ff;--good:#2fd573;--bad:#ff4d5e;--blue:#1233d6}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(ellipse at 50% 0,#1b2a8a,var(--bg) 65%);color:#fff;font-family:"Segoe UI",system-ui,Arial,sans-serif;overflow:hidden}
+section{display:none;height:100%;flex-direction:column}
+section.on{display:flex}
+.logo{font-family:Impact,"Arial Black",sans-serif;letter-spacing:3px;color:var(--gold);text-align:center;font-size:44px;text-shadow:0 3px 0 #8a4f00;margin:0}
+.center{margin:auto;width:min(92vw,420px);text-align:center;display:flex;flex-direction:column;gap:12px}
+input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold);background:#000a;color:#fff;text-align:center;width:100%}
+.btn{font-family:Impact,"Arial Black",sans-serif;letter-spacing:1.5px;font-size:24px;color:#2a1700;background:linear-gradient(#ffe27a,var(--gold2));border:0;border-bottom:5px solid #a65f00;border-radius:14px;padding:14px 20px;width:100%;text-transform:uppercase}
+.btn:active{transform:translateY(3px);border-bottom-width:2px}
+.btn:disabled{filter:grayscale(1) brightness(.6)}
+.btn.good{background:linear-gradient(#6ff0a0,#1fb35a);color:#033;border-bottom-color:#0b7a37}
+.err{color:var(--bad);min-height:1.2em}
+.sub{color:var(--mute)}
+.top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,20,.6);font-family:Impact,sans-serif;letter-spacing:1px;color:var(--gold);padding-top:max(8px,env(safe-area-inset-top))}
+.bar{height:8px;background:rgba(255,255,255,.15)}
+.bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--bad),var(--gold),var(--good));background-size:300% 100%}
+.prompt{display:flex;gap:10px;align-items:center;padding:8px 12px;background:rgba(0,0,40,.7);min-height:56px}
+.prompt img{height:84px;max-width:42vw;object-fit:cover;border-radius:8px;border:2px solid #fff}
+.prompt h2{margin:0;font-size:clamp(18px,5vw,26px);line-height:1.15}
+.prompt small{color:var(--gold);letter-spacing:1px;font-weight:700}
+#map{flex:1;min-height:0;background:#aad3df}
+.foot{padding:10px 12px max(10px,env(safe-area-inset-bottom));background:rgba(0,0,20,.85)}
+.res{text-align:center}
+.res .big{font-family:Impact,sans-serif;font-size:56px;color:var(--gold);line-height:1;animation:pop .5s}
+.res .sm{color:var(--mute);margin-top:4px}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.rows{display:grid;gap:5px;max-width:420px;margin:12px auto;width:100%}
+.rows div{display:flex;justify-content:space-between;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 12px}
+.rows .me{background:var(--gold);color:#000;font-weight:800}
+.dot{width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 6px #000}
+.star{font-size:30px;line-height:30px;text-shadow:0 0 6px #000}
+</style>
+</head>
+<body>
+<section id="s-join" class="on"><div class="center">
+  <h1 class="logo">GLOBE<br>TROTTERS</h1>
+  <input id="code" inputmode="numeric" maxlength="4" placeholder="Game code" autocomplete="off">
+  <input id="name" maxlength="14" placeholder="Your name" autocomplete="off">
+  <div class="err" id="err"></div>
+  <button class="btn" id="joinbtn">Join Game</button>
+</div></section>
+
+<section id="s-wait"><div class="center">
+  <h1 class="logo" style="font-size:34px">YOU'RE IN!</h1>
+  <div id="wname" style="font-size:30px;font-weight:800"></div>
+  <div class="sub">Look at the big screen. The host will start the game.</div>
+  <div class="sub" id="wcount"></div>
+</div></section>
+
+<section id="s-play">
+  <div class="top"><span id="rnd"></span><span id="tm"></span></div>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="prompt" id="prompt"></div>
+  <div id="map"></div>
+  <div class="foot" id="foot"></div>
+</section>
+
+<section id="s-end"><div class="center">
+  <h1 class="logo" style="font-size:36px">GAME OVER</h1>
+  <div style="font-size:64px" id="medal"></div>
+  <div style="font-size:26px;font-weight:800" id="erank"></div>
+  <div class="rows" id="etop"></div>
+  <div class="sub">Waiting to see if the host plays again…</div>
+</div></section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,iv=null,view='';
+try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
+const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
+const fmtKm=d=>d<10?d.toFixed(1):Math.round(d).toLocaleString();
+
+$('#joinbtn').onclick=async()=>{
+  $('#err').textContent='';
+  const r=await fetch('/api/join',{method:'POST',body:JSON.stringify({code:$('#code').value.trim(),name:$('#name').value})}).catch(()=>null);
+  if(!r){$('#err').textContent='Can\'t reach the game. Are you on the same Wi-Fi?';return;}
+  const j=await r.json();
+  if(!r.ok){$('#err').textContent=j.error;return;}
+  me={pid:j.pid,token:j.token,name:j.name};try{localStorage.setItem('gt.me',JSON.stringify(me));}catch(e){}
+  connect();
+};
+function connect(){
+  if(es)es.close();
+  es=new EventSource(`/api/events?role=player&pid=${me.pid}&token=${me.token}`);
+  es.onmessage=e=>{st=JSON.parse(e.data);off=st.now-Date.now();render();};
+}
+
+function ensureMap(){
+  if(map)return;
+  map=L.map('map',{minZoom:1,worldCopyJump:true,zoomControl:true,attributionControl:false}).setView([20,10],2);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
+  layer=L.layerGroup().addTo(map);
+  map.on('click',e=>{
+    if(!st||st.phase!=='guess'||(st.me&&st.me.locked))return;
+    setPin(e.latlng.lat,e.latlng.lng);
+    fetch('/api/guess',{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:e.latlng.lat,lon:e.latlng.lng})});
+  });
+}
+const dotIcon=c=>L.divIcon({className:'',html:`<div class="dot" style="background:${c}"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
+function setPin(lat,lon){
+  layer.clearLayers();pin={lat,lon};
+  L.marker([lat,lon],{icon:dotIcon(me.color||'#ffcf3a')}).addTo(layer);
+  renderFoot();
+}
+
+function renderFoot(){
+  const f=$('#foot');
+  if(st.phase==='guess'){
+    const locked=st.me&&st.me.locked;
+    f.innerHTML=locked?`<button class="btn" disabled>Locked in ✓ Waiting for others…</button>`
+      :`<button class="btn good" id="lock" ${pin?'':'disabled'}>${pin?'Lock in guess':'Tap the map to drop a pin'}</button>`;
+    const b=$('#lock');if(b)b.onclick=()=>{
+      b.disabled=true;
+      fetch('/api/guess',{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:pin.lat,lon:pin.lon,lock:true})});
+    };
+  }
+}
+
+function render(){
+  if(st.phase==='closed'){try{localStorage.removeItem('gt.me');}catch(e){}me=null;if(es)es.close();show('s-join');$('#err').textContent='That game ended. Join a new one.';return;}
+  if(!st.me){show('s-join');return;}
+  me.color=st.me.color;
+  if(st.phase==='lobby'){view='lobby';show('s-wait');$('#wname').textContent=st.me.name;$('#wcount').textContent=st.players.length+' player'+(st.players.length===1?'':'s')+' joined';return;}
+  if(st.phase==='end'){
+    view='end';show('s-end');clearInterval(iv);
+    $('#medal').textContent=['','🥇','🥈','🥉'][st.me.rank]||'🏁';
+    $('#erank').textContent=`#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts`;
+    const top=[...st.players].sort((a,b)=>b.score-a.score).slice(0,5);
+    $('#etop').innerHTML=top.map((p,i)=>`<div class="${p.id===st.me.id?'me':''}"><span>${i+1}. ${esc(p.name)}</span><b>${p.score.toLocaleString()}</b></div>`).join('');
+    return;
+  }
+  show('s-play');ensureMap();setTimeout(()=>map.invalidateSize(),50);
+  $('#rnd').textContent=`ROUND ${st.idx+1}/${st.total}`;
+  const key=st.phase+st.idx;
+  if(st.phase==='guess'){
+    if(view!==key){
+      view=key;pin=null;layer.clearLayers();map.setView([20,10],2);
+      const p=st.prompt;
+      $('#prompt').innerHTML=(p.image?`<img src="${esc(p.image)}" alt="" onerror="this.remove()">`:'')+`<div><small>${esc(p.category.toUpperCase())}</small><h2>${p.name?esc(p.name):'Where in the world is this?'}</h2></div>`;
+      if(st.me.guess)setPin(st.me.guess.lat,st.me.guess.lon);
+      clearInterval(iv);
+      const tot=(st.deadline-st.now)||1;
+      iv=setInterval(()=>{
+        const left=Math.max(0,(st.deadline-(Date.now()+off))/1000);
+        $('#tm').textContent=Math.ceil(left)+'s';
+        $('#fill').style.width=Math.min(100,left/(st.settings.seconds)*100)+'%';
+        $('#fill').style.backgroundPosition=(100-Math.min(100,left/st.settings.seconds*100))+'% 0';
+      },200);
+    }
+    renderFoot();
+  }else if(st.phase==='reveal'&&view!==key){
+    view=key;clearInterval(iv);$('#tm').textContent='';$('#fill').style.width='0';
+    layer.clearLayers();
+    const a=st.answer,pts=[[a.lat,a.lon]];
+    L.circle([a.lat,a.lon],{radius:Math.max(a.radius,0.3)*1000,color:'#2fd573',weight:2,fillOpacity:.15}).addTo(layer);
+    L.marker([a.lat,a.lon],{icon:L.divIcon({className:'',html:'<div class="star">⭐</div>',iconSize:[30,30],iconAnchor:[15,15]})}).addTo(layer);
+    const mine=st.results.find(r=>r.id===st.me.id);
+    if(mine&&mine.lat!=null){
+      pts.push([mine.lat,mine.lon]);
+      L.marker([mine.lat,mine.lon],{icon:dotIcon(st.me.color)}).addTo(layer);
+      L.polyline([[mine.lat,mine.lon],[a.lat,a.lon]],{color:'#fff',dashArray:'6 6',weight:2}).addTo(layer);
+    }
+    map.fitBounds(pts,{padding:[50,50],maxZoom:8});
+    const l=st.me.last||{dist:null,pts:0};
+    const bull=l.dist!=null&&l.dist<=a.radius;
+    $('#foot').innerHTML=`<div class="res"><div class="big">+${l.pts.toLocaleString()}</div>
+      <div>${l.dist==null?'No guess this round':(bull?'🎯 Bullseye!':fmtKm(l.dist)+' km away')} · it was <b>${esc(a.name)}</b>, ${esc(a.country)}</div>
+      <div class="sm">#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts total</div></div>`;
+    $('#prompt').innerHTML=`<div><small>${esc(a.country.toUpperCase())}</small><h2>${esc(a.name)}</h2><div class="sub" style="font-size:13px">${esc(a.blurb||'')}</div></div>`;
+  }
+}
+if(me){connect();}
+</script>
+</body>
+</html>
