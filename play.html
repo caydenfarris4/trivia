@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>Globe Trotters</title>
+<title>Game Night Live</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
 :root{--bg:#050826;--gold:#ffcf3a;--gold2:#ff9d1c;--mute:#9fb0ff;--good:#2fd573;--bad:#ff4d5e;--blue:#1233d6}
@@ -38,21 +38,25 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .rows div{display:flex;justify-content:space-between;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 12px}
 .rows .me{background:var(--gold);color:#000;font-weight:800}
 .dot{width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 6px #000}
+.tbadge{display:inline-block;font-family:Impact,sans-serif;letter-spacing:2px;text-transform:uppercase;color:#000;border-radius:99px;padding:4px 16px;font-size:22px}
+.hostlink{color:var(--mute);font-size:14px;margin-top:10px}
 .star{font-size:30px;line-height:30px;text-shadow:0 0 6px #000}
 </style>
 </head>
 <body>
 <section id="s-join" class="on"><div class="center">
-  <h1 class="logo">GLOBE<br>TROTTERS</h1>
+  <h1 class="logo">GAME NIGHT<br>LIVE</h1>
   <input id="code" inputmode="numeric" maxlength="4" placeholder="Game code" autocomplete="off">
   <input id="name" maxlength="14" placeholder="Your name" autocomplete="off">
   <div class="err" id="err"></div>
   <button class="btn" id="joinbtn">Join Game</button>
+  <a class="hostlink" href="/login">Host login</a>
 </div></section>
 
 <section id="s-wait"><div class="center">
   <h1 class="logo" style="font-size:34px">YOU'RE IN!</h1>
   <div id="wname" style="font-size:30px;font-weight:800"></div>
+  <div id="wteam"></div>
   <div class="sub">Look at the big screen. The host will start the game.</div>
   <div class="sub" id="wcount"></div>
 </div></section>
@@ -69,6 +73,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
   <h1 class="logo" style="font-size:36px">GAME OVER</h1>
   <div style="font-size:64px" id="medal"></div>
   <div style="font-size:26px;font-weight:800" id="erank"></div>
+  <div id="eteam" class="sub"></div>
   <div class="rows" id="etop"></div>
   <div class="sub">Waiting to see if the host plays again…</div>
 </div></section>
@@ -81,6 +86,8 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,iv=null,view='';
 try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
 const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
+const myTeam=()=>st&&st.teams&&st.me&&st.me.team!=null?st.teams[st.me.team]:null;
+const teamRank=t=>[...st.teams].sort((a,b)=>b.score-a.score).findIndex(x=>x.id===t.id)+1;
 const fmtKm=d=>d<10?d.toFixed(1):Math.round(d).toLocaleString();
 
 $('#joinbtn').onclick=async()=>{
@@ -133,17 +140,22 @@ function render(){
   if(st.phase==='closed'){try{localStorage.removeItem('gt.me');}catch(e){}me=null;if(es)es.close();show('s-join');$('#err').textContent='That game ended. Join a new one.';return;}
   if(!st.me){show('s-join');return;}
   me.color=st.me.color;
-  if(st.phase==='lobby'){view='lobby';show('s-wait');$('#wname').textContent=st.me.name;$('#wcount').textContent=st.players.length+' player'+(st.players.length===1?'':'s')+' joined';return;}
+  if(st.phase==='lobby'){view='lobby';show('s-wait');$('#wname').textContent=st.me.name;$('#wcount').textContent=st.players.length+' player'+(st.players.length===1?'':'s')+' joined';
+    const t=myTeam();$('#wteam').innerHTML=t?`<span class="tbadge" style="background:${t.color}">Team ${esc(t.name)}</span>`:'';return;}
   if(st.phase==='end'){
     view='end';show('s-end');clearInterval(iv);
     $('#medal').textContent=['','🥇','🥈','🥉'][st.me.rank]||'🏁';
     $('#erank').textContent=`#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts`;
+    const tm=myTeam();
+    $('#eteam').innerHTML=tm?`<span class="tbadge" style="background:${tm.color}">Team ${esc(tm.name)}</span><div>Team #${teamRank(tm)} of ${st.teams.length} · ${tm.score.toLocaleString()} pts</div>`:'';
     const top=[...st.players].sort((a,b)=>b.score-a.score).slice(0,5);
     $('#etop').innerHTML=top.map((p,i)=>`<div class="${p.id===st.me.id?'me':''}"><span>${i+1}. ${esc(p.name)}</span><b>${p.score.toLocaleString()}</b></div>`).join('');
     return;
   }
   show('s-play');ensureMap();setTimeout(()=>map.invalidateSize(),50);
-  $('#rnd').textContent=`ROUND ${st.idx+1}/${st.total}`;
+  const tmx=myTeam();
+  $('#rnd').textContent=`ROUND ${st.idx+1}/${st.total}`+(tmx?` · ${tmx.name.toUpperCase()}`:'');
+  document.querySelector('.top').style.boxShadow=tmx?`inset 0 -4px 0 ${tmx.color}`:'none';
   const key=st.phase+st.idx;
   if(st.phase==='guess'){
     if(view!==key){
@@ -178,7 +190,8 @@ function render(){
     const bull=l.dist!=null&&l.dist<=a.radius;
     $('#foot').innerHTML=`<div class="res"><div class="big">+${l.pts.toLocaleString()}</div>
       <div>${l.dist==null?'No guess this round':(bull?'🎯 Bullseye!':fmtKm(l.dist)+' km away')} · it was <b>${esc(a.name)}</b>, ${esc(a.country)}</div>
-      <div class="sm">#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts total</div></div>`;
+      <div class="sm">#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts total</div>
+      ${myTeam()?`<div class="sm">Team ${esc(myTeam().name)}: #${teamRank(myTeam())} of ${st.teams.length} · ${myTeam().score.toLocaleString()} pts (+${myTeam().last.toLocaleString()})</div>`:''}</div>`;
     $('#prompt').innerHTML=`<div><small>${esc(a.country.toUpperCase())}</small><h2>${esc(a.name)}</h2><div class="sub" style="font-size:13px">${esc(a.blurb||'')}</div></div>`;
   }
 }

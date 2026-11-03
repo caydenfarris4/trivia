@@ -6,7 +6,7 @@ Read this first. It tells you what this project is, how each game plays and is r
 
 **Game Night Live** is a party-game-show app for **4–20 people** in one room, in the style of the quiz/geography/trivia reels on Instagram (jakelyonsgeo, bradyyourtutor, solunaaaa16 were the reference; the owner could not share formats, so these are general quiz-show formats). The goal is **fun for a group of young adults**, not pure trivia.
 
-- One **host** drives a big screen (laptop on a projector/TV). It shows a hub with four games.
+- One **host** logs in with a shared password (§2.6) and drives a big screen (laptop on a projector/TV). It shows a hub with four games. Players never log in: like Jackbox/Kahoot they just go to the site and enter the game code the host's screen shows.
 - Three games are **host-run** (the host taps names on the big screen).
 - **Globe Trotters is live multiplayer**: players join on their own phones (like Kahoot/GeoGuessr).
 - Sound is **synthesized in the browser** (Web Audio). There are no audio files.
@@ -35,8 +35,8 @@ Games 3 and 4 replaced earlier pure-trivia games (Last One Standing, Higher or L
 ### 2.2 Globe Trotters (live)
 Flow: **lobby → (guess → reveal) × N → end**.
 1. Host opens the game. The server creates a room and shows the **4-digit code** and the join address (LAN IP).
-2. Players open that address on their phone (`/` on a non-local client serves `play.html`), type code + name. 4–20 players (`max` setting).
-3. Host picks rounds (5–20), seconds (20–90), category, hide-name toggle, then **Start**.
+2. Players open that address on their phone (`/` serves `play.html`), type code + name. 4–20 players (`max` setting).
+3. Host picks rounds (dropdown: 5, 8, 10, 15, 20), seconds (dropdown: 20, 30, 45, 60, 90), category, hide-name toggle, then **Start**. The server accepts wider values than the dropdowns offer (rounds 3–30, seconds 15–180, max players 4–20) and clamps anything outside that range.
 4. Each round the place (name + category, and a photo if available) goes to every phone. Players tap a map to drop/move a pin and press **Lock in**. The round ends when the timer ends **or every connected player has locked**. A placed-but-unlocked pin still counts at timeout.
 5. Reveal: host screen shows a Leaflet map with the answer (⭐ + radius circle), all pins, dashed lines, a ranked list, the blurb and photo credit. Phones show their own distance, points and rank. The host clicks **Next Round ▸** to send the next place.
 6. After the last round: podium on the host screen, final rank on phones. **Play Again** returns to the lobby with the same players and zeroed scores.
@@ -57,6 +57,21 @@ The answer's coordinates are **never sent to clients before the reveal**. Keep i
 - **Would You Rather**: host taps players who chose A (rest = B). Majority scores 100. If `flip: true` it's an **UNDERDOG** round: the **minority** scores 200. Ties score nothing.
 - **Most Likely To…**: everyone points on 3; host taps the player with the most fingers pointed at them, who is crowned (+100).
 
+### 2.5 Teams (all four games)
+Optional. The host picks **No teams** or **2–6 teams** (Red, Blue, Green, Gold, Purple, Orange).
+- **Team score = the sum of its members' scores** in every game. (Uneven team sizes therefore favour the bigger team; an average-per-member option has not been built.)
+- **Host-run games (1, 3, 4):** choose "Split everyone into N teams" on the setup screen (`roster.teams`, saved in `localStorage`). On the hub a **Teams panel** shows each team's members: tap a player to move them to the next team, or press **Shuffle teams**. Assignment is random round-robin over a shuffle, so team sizes differ by at most 1. Players keep their team across games until the roster is edited or shuffled.
+- **Globe Trotters (live):** a **Teams** dropdown in the lobby (it starts from the setup-screen choice). The server (`assignTeams`) splits players; people who join late go to the smallest team. The host can move/shuffle **only in the lobby** (locked once the game starts). Phones show a team badge in the waiting room, a coloured top bar, their team's rank/points after each round, and team rank at the end. The host reveal screen lists team rows (total + this round) above the player rows.
+- Scoreboard: a coloured team row sits above the player chips. Podium: **Team standings** first, then **Top players** (top 5 individuals).
+- Teams are the same four-game feature everywhere; scoring rules of each game are unchanged.
+
+### 2.6 Host login
+- The host signs in at **`/login`** (or `/host`, which redirects there) with ONE shared password. Set it with the **`HOST_PASSWORD` environment variable**. If it is not set the server generates a random one on every start and prints it in the console (fine for a laptop; on a deployed server set it explicitly, otherwise it changes on each deploy).
+- Login sets an `HttpOnly; SameSite=Lax` cookie (`gn_host`, 12 h; `Secure` automatically behind an https proxy via `x-forwarded-proto`). Sessions are in memory, so a server restart logs the host out. After 8 wrong tries from one address the server answers 429 for 10 minutes.
+- What needs login: the host app (`/host`), the question banks `/banks/*.js` (they contain the answers), and `POST /api/host/new`. Everything else a host does also needs the per-game `x-token`.
+- The site root **`/`** is the player page: enter the 4-digit code + a name. It has a small "Host login" link.
+- There are no player accounts, usernames or database. Don't add them unless asked.
+
 ## 3. How to run it
 
 Requires **Node.js** (any recent version; v25 was used). **No `npm install`: there are zero dependencies.**
@@ -64,15 +79,15 @@ Requires **Node.js** (any recent version; v25 was used). **No `npm install`: the
 ```bash
 node server.js            # or double-click start.bat (opens the browser too)
 ```
-- Host screen: **http://localhost:3000** (open on the host computer).
-- Players: the address printed in the console / shown in the Globe Trotters lobby, e.g. `http://192.168.x.x:3000` — same Wi-Fi.
+- Host screen: **http://localhost:3000/host** (start.bat opens it). You log in with `HOST_PASSWORD` (or the random password printed in the console). Example: `HOST_PASSWORD=mysecret node server.js`.
+- Players: the address shown in the Globe Trotters lobby (on a laptop that is the LAN address, e.g. `http://192.168.x.x:3000`; on a deployment it is the site's own address, e.g. `https://trivia.caydenfarris.net`), then the code.
 - Change port with `PORT=3055 node server.js`.
-- Opening `index.html` by double-click still runs games 1, 3, 4 (host-run). **Globe Trotters needs the server** and shows a "Start the game server" panel if it can't reach it.
+- Opening `index.html` by double-click (file://) still runs games 1, 3, 4 (host-run) with no login, because no server is involved. **Globe Trotters needs the server** and shows a "Start the game server" panel if it can't reach it.
 - Internet needed for: Leaflet (cdnjs), OpenStreetMap tiles, Wikimedia photos. Everything else works offline.
-- Internet play (players not on the host's Wi-Fi): run `server.js` on any Node host. It reads `PORT`. The "host only" check (see §5) means the host page must be opened on the server machine itself, so an internet deployment needs that check adapted first.
+- **Internet play** is supported: run `server.js` on any Node host (it reads `PORT` and `HOST_PASSWORD`) behind https. The host opens `https://<site>/host`, logs in, and players open `https://<site>/` and enter the code. The owner's deployment is **trivia.caydenfarris.net** (set `HOST_PASSWORD` in the host's environment settings; make sure the proxy supports Server-Sent Events, i.e. does not buffer `/api/events`).
 
 ### Running each game (host checklist)
-1. Start the server, open `localhost:3000`, set the number of players (4–20) and optional names, press **Let's Play**. (This roster only feeds games 1, 3, 4. Globe Trotters players come from phones.)
+1. Start the server, open `localhost:3000/host` and log in, set the number of players (4–20) and optional names, press **Let's Play**. (This roster only feeds games 1, 3, 4. Globe Trotters players come from phones.)
 2. Pick a card on the hub. **Menu** (top bar) returns to the hub (confirms first). **Players** edits the roster. **🔊** mutes.
 3. Game-specific steps are in §2.
 
@@ -83,9 +98,10 @@ GameNight/
   AGENTS.md              ← this file
   README.md              ← short human-facing summary
   start.bat              ← Windows launcher (checks Node, opens browser, runs server)
-  server.js              ← Node server: static files + Globe Trotters room/API (zero deps)
+  server.js              ← Node server: host login, static files, Globe Trotters room/API + teams (zero deps)
+  login.html             ← host password page (/login)
   index.html             ← HOST app: hub, setup, all four games' host UIs, CSS, sound engine
-  play.html              ← PHONE app for Globe Trotters players (join → map → result)
+  play.html              ← PLAYER page at `/`: enter code + name → (team badge) → map → result
   banks/
     jeopardy.js          ← window.BANKS.jeopardy  = { boards: [...] }
     spotthefake.js       ← window.BANKS.spotthefake
@@ -118,17 +134,22 @@ One in-memory **room** at a time. Starting Globe Trotters on the host (`POST /ap
 Routes:
 | Route | Who | Purpose |
 |---|---|---|
-| `GET /` | local → `index.html`, others → `play.html` | "local" = request comes from the machine itself (`isLocal`) |
-| `GET /play`, `/index.html`, `/banks/<name>.js`, `/img/<file>` | anyone | static whitelist. **`/banks/*.csv` is deliberately not served** (it contains answers) |
-| `POST /api/host/new` | **local machine only** | creates room → `{token, code, urls}` |
-| `POST /api/host/{settings,start,reveal,next,again}` | host (`x-token` header) | control the game |
+| `GET /`, `/play`, `/play.html` | anyone | the player page (join with code) |
+| `GET /login` | anyone | host password page |
+| `GET /host` (also `/index.html`) | host session cookie, else 302 → `/login` | the host app |
+| `GET /banks/<name>.js` | **host session cookie** (else 401) | host-run banks, they contain answers. `/banks/*.csv` is never served |
+| `GET /img/<file>` | anyone | Globe Trotters photos |
+| `POST /api/login` `{password}` / `POST /api/logout` / `GET /api/whoami` | anyone | host session (see §2.6) |
+| `POST /api/host/new` | **host session cookie** (401 otherwise) | creates room → `{token, code, urls}`. `urls` = the address the host used (e.g. `https://trivia.caydenfarris.net`), or the LAN addresses when opened via localhost |
+| `POST /api/host/{settings,start,reveal,next,again}` | host (`x-token` header) | control the game. `settings` accepts `teams` (0 or 2–6) |
+| `POST /api/host/teams` `{shuffle:true}` or `{move:{pid,team}}` | host (`x-token`), lobby only | rearrange teams |
 | `POST /api/join` `{code,name}` | player | → `{pid, token, name}`; duplicate names get a number suffix |
 | `POST /api/guess` `{pid,token,lat,lon,lock}` | player | updates pin; `lock:true` locks it and may end the round early. Longitude is wrapped into [-180,180) |
 | `GET /api/events?role=host&token=…` / `?role=player&pid=…&token=…` | SSE | pushes a full state snapshot (`view(role,pid)`) on every change |
 
 State machine: `lobby → guess → reveal → guess … → end`, with `again` returning `end/reveal → lobby`. Every phase change calls `broadcast()`. Unlocked-pin updates do **not** broadcast (only locks do).
 
-Snapshot shape (key fields): `now, phase, code, settings, players[{id,name,color,score,locked,connected}], idx, total, deadline, prompt{category,name|null,image|null}`; in `reveal` also `answer{name,country,lat,lon,radius,blurb,credit}` and `results[]`; for players `me{…,guess,last,rank,of}`; for host `urls, categories, count`. Clients compute countdowns from `deadline` and the `now` offset (`off = st.now - Date.now()`), so device clock skew doesn't matter.
+Snapshot shape (key fields): `now, phase, code, settings, players[{id,name,color,score,locked,connected,team}], teams (null or [{id,name,color,members,score,last}]), idx, total, deadline, prompt{category,name|null,image|null}`; in `reveal` also `answer{name,country,lat,lon,radius,blurb,credit}` and `results[]`; for players `me{…,guess,last,rank,of}`; for host `urls, categories, count`. Clients compute countdowns from `deadline` and the `now` offset (`off = st.now - Date.now()`), so device clock skew doesn't matter.
 
 Banks are re-read on every `start`, so editing the CSV needs no restart. The server drops rows without valid `lat`/`lon`.
 
@@ -158,10 +179,12 @@ Remember to stop test servers (`Get-NetTCPConnection -LocalPort <port>` → `Sto
 - `qhead` header rows wrap on narrow screens (host window can be small).
 - Globe Trotters players list comes from the server. The host's 4–20 roster is separate and only used by games 1, 3, 4.
 - Early round end waits only for **connected** players; if someone's phone drops, others locking ends the round.
-- Don't add speed-based scoring, accounts/passwords, or a database unless asked ("log in" meant "join with a code and name").
-- Git: the owner uploads manually. There is no repo here and no commit/PR workflow.
+- Don't add speed-based scoring, player accounts, or a database unless asked. The only login is the single shared **host** password (§2.6); players join with a code and name.
+- Git: this is a GitHub repo (`caydenfarris4/trivia`). Work on the designated feature branch; open a pull request only when the owner asks.
 
 ## 9. Open items / ideas (not started)
+- Team scoring option "average per member" (sum penalises smaller teams).
+- Host resume after refresh / re-login (a refresh still creates a new room).
 - Run `fetch_images.py`, review photos, add `globetrotters_images.csv`.
 - Optional speed bonus (Kahoot-style) in `endRound` scoring.
 - QR code for the join address in the Globe Trotters lobby.

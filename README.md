@@ -4,18 +4,23 @@ Four party games for 4–20 people, played on one big screen.
 
 ## Run it
 1. Install [Node.js](https://nodejs.org) (any recent version, no `npm install` needed).
-2. Double-click **start.bat** (or run `node server.js`). Your browser opens the host screen at http://localhost:3000.
-3. Leave the black window open while you play.
+2. Double-click **start.bat** (or run `node server.js`). Your browser opens the host login at http://localhost:3000/host.
+3. Log in with the host password. Set your own with the `HOST_PASSWORD` environment variable (e.g. `HOST_PASSWORD=mysecret node server.js`); if you don't, a random one is printed in the black window.
+4. Leave the black window open while you play.
 
 ## The games
 | Game | How it plays |
 |---|---|
 | **The Big Board** | Host-run Jeopardy. Four boards from `banks/jeopardy.js`. |
-| **Globe Trotters** | **Live, like Kahoot/GeoGuessr.** Players open the address shown on the host screen on their phones, enter the 4-digit code and a name. The host clicks *Start* / *Next Round*, the place goes out to every phone at once, and everyone drops a pin before the timer runs out. Score = `round(5000 * exp(-max(0, dist_km - radius_km) / 1500))`. The round ends early when everyone has locked in. |
+| **Globe Trotters** | **Live, like Kahoot/GeoGuessr.** Players open the site's address on their phones (shown on the host screen), enter the 4-digit code and a name. No account needed. The host clicks *Start* / *Next Round*, the place goes out to every phone at once, and everyone drops a pin before the timer runs out. Score = `round(5000 * exp(-max(0, dist_km - radius_km) / 1500))`. The round ends early when everyone has locked in. |
 | **Spot the Fake** | Two truths and a lie. Host taps who spotted it. |
 | **Crowd Control** | Would-you-rather and Most Likely To. |
 
-Phones must be on the **same Wi-Fi** as the host computer (guest networks sometimes block this). For play over the internet, run `server.js` on any Node host (Render, Fly, a VPS) and share its address.
+Phones must be on the **same Wi-Fi** as the host computer (guest networks sometimes block this). For play over the internet, run `server.js` on any Node host (Render, Fly, a VPS) behind https, set `HOST_PASSWORD`, and share its address.
+
+## Host login and teams
+- Only the host logs in (one shared password). Everyone else just enters the game code, like Jackbox or Kahoot.
+- **Teams (all four games):** pick 2–6 teams on the setup screen (or in the Globe Trotters lobby). Players are split randomly, the host can move people or shuffle, and a team's score is the sum of its members.
 
 ## Globe Trotters banks
 - `banks/globetrotters_bank.csv` — the places (answers never leave the server until the reveal).
