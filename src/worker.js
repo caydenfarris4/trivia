@@ -69,6 +69,7 @@ function haversine(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
 }
 const score = (dist, radius) => Math.round(5000 * Math.exp(-Math.max(0, dist - radius) / 1500));
+const GAMES = ['jeopardy', 'globetrotters', 'spotthefake', 'crowdcontrol']; // the game a code is for is chosen by the host before opening the lobby
 const TEAM_DEFS = [
   { name: 'Red', color: '#ff4d5e' }, { name: 'Blue', color: '#4f7bff' }, { name: 'Green', color: '#2fd573' },
   { name: 'Gold', color: '#ffcf3a' }, { name: 'Purple', color: '#b46bff' }, { name: 'Orange', color: '#ff9d1c' },
@@ -179,7 +180,7 @@ export class Game extends DurableObject {
     await this.close();
     this.r = {
       code, hostToken, phase: 'lobby',
-      settings: { rounds: 10, seconds: 45, category: 'All', hideName: false, max: 20, teams: 0 },
+      settings: { rounds: 10, seconds: 45, category: 'All', hideName: false, max: 20, teams: 0, game: 'globetrotters' },
       players: {}, rounds: [], idx: -1, deadline: 0, results: null,
     };
     await this.save();
@@ -355,6 +356,7 @@ export class Game extends DurableObject {
         if ('category' in b && this.categories().includes(b.category)) s.category = b.category;
         if ('hideName' in b) s.hideName = !!b.hideName;
         if ('max' in b) s.max = clamp(Math.round(+b.max) || 20, 4, 20);
+        if ('game' in b && GAMES.includes(b.game)) s.game = b.game;
         if ('teams' in b) { const t = Math.round(+b.teams) || 0; s.teams = t < 2 ? 0 : clamp(t, 2, 6); this.assignTeams(); }
         this.broadcast(); return json({ ok: true });
       }
@@ -364,6 +366,7 @@ export class Game extends DurableObject {
         this.broadcast(); return json({ ok: true });
       }
       if (a === 'start' && r.phase === 'lobby') {
+        if (s.game !== 'globetrotters') return json({ error: 'This game is run from the host screen.' }, 400);
         if (!this.players().length) return json({ error: 'No players yet.' }, 400);
         const pool = s.category === 'All' ? PLACES : PLACES.filter(p => p.category === s.category);
         r.rounds = shuffle(pool).slice(0, s.rounds); r.idx = -1;
@@ -371,7 +374,7 @@ export class Game extends DurableObject {
       }
       if (a === 'reveal') { this.endRound(); return json({ ok: true }); }
       if (a === 'next' && r.phase === 'reveal') { await this.startRound(); return json({ ok: true }); }
-      if (a === 'again' && r.phase !== 'guess') {
+      if (a === 'again') { // back to the lobby from any phase (also used when the host leaves a game mid-round)
         r.phase = 'lobby'; r.idx = -1; r.rounds = []; r.results = null; r.deadline = 0;
         for (const p of this.players()) { p.score = 0; p.guess = null; p.locked = false; p.last = null; }
         this.broadcast(); return json({ ok: true });

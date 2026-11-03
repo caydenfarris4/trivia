@@ -57,7 +57,8 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
   <h1 class="logo" style="font-size:34px">YOU'RE IN!</h1>
   <div id="wname" style="font-size:30px;font-weight:800"></div>
   <div id="wteam"></div>
-  <div class="sub">Look at the big screen. The host will start the game.</div>
+  <div id="wgame" class="sub" style="font-size:20px;color:#fff"></div>
+  <div class="sub" id="wsub">Look at the big screen. The host will start the game.</div>
   <div class="sub" id="wcount"></div>
 </div></section>
 
@@ -88,6 +89,7 @@ try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
 const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
 const myTeam=()=>st&&st.teams&&st.me&&st.me.team!=null?st.teams[st.me.team]:null;
 const teamRank=t=>[...st.teams].sort((a,b)=>b.score-a.score).findIndex(x=>x.id===t.id)+1;
+const GAME_NAMES={jeopardy:'🎯 The Big Board',globetrotters:'🌍 Globe Trotters',spotthefake:'🕵️ Spot the Fake',crowdcontrol:'🎉 Crowd Control'};
 const fmtKm=d=>d<10?d.toFixed(1):Math.round(d).toLocaleString();
 
 $('#joinbtn').onclick=async()=>{
@@ -141,6 +143,8 @@ function render(){
   if(!st.me){show('s-join');return;}
   me.color=st.me.color;
   if(st.phase==='lobby'){view='lobby';show('s-wait');$('#wname').textContent=st.me.name;$('#wcount').textContent=st.players.length+' player'+(st.players.length===1?'':'s')+' joined';
+    const gm=st.settings&&st.settings.game;$('#wgame').textContent=GAME_NAMES[gm]?'Tonight: '+GAME_NAMES[gm]:'';
+    $('#wsub').textContent=gm==='globetrotters'?'Look at the big screen. The host will start the game.':'Look at the big screen: the host runs this game from there. Keep this page open!';
     const t=myTeam();$('#wteam').innerHTML=t?`<span class="tbadge" style="background:${t.color}">Team ${esc(t.name)}</span>`:'';return;}
   if(st.phase==='end'){
     view='end';show('s-end');clearInterval(iv);
