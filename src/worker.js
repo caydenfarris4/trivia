@@ -62,6 +62,8 @@ function loadPlaces() {
     });
 }
 const PLACES = loadPlaces();
+// Globe Trotters is PHOTO ONLY: the place is the answer, so its name is never shown while guessing. Only places with a photo are used.
+const PHOTO_PLACES = PLACES.filter(p => p.img);
 
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371, r = Math.PI / 180, dl = (lat2 - lat1) * r, dg = (lon2 - lon1) * r;
@@ -180,7 +182,7 @@ export class Game extends DurableObject {
     await this.close();
     this.r = {
       code, hostToken, phase: 'lobby',
-      settings: { rounds: 10, seconds: 45, category: 'All', hideName: false, max: 20, teams: 0, game: 'globetrotters' },
+      settings: { rounds: 10, seconds: 45, category: 'All', max: 20, teams: 0, game: 'globetrotters' },
       players: {}, rounds: [], idx: -1, deadline: 0, results: null,
     };
     await this.save();
@@ -197,14 +199,13 @@ export class Game extends DurableObject {
   connCount(pid) { let n = 0; for (const c of this.clients) if (c.role === 'player' && c.pid === pid) n++; return n; }
   connected() { return this.players().filter(p => this.connCount(p.id) > 0); }
   cur() { return this.r.rounds[this.r.idx]; }
-  categories() { return ['All', ...new Set(PLACES.map(p => p.category))]; }
+  categories() { return ['All', ...new Set(PHOTO_PLACES.map(p => p.category))]; }
   ranked() { return this.players().sort((a, b) => b.score - a.score); }
   playerList() {
     return this.players().map(p => ({ id: p.id, name: p.name, color: p.color, score: p.score, locked: p.locked, connected: this.connCount(p.id) > 0, team: p.team }));
   }
-  promptOf(pl) {
-    const hide = this.r.settings.hideName && pl.img;
-    return { category: pl.category, name: hide ? null : pl.name, image: pl.img ? pl.img.url : null };
+  promptOf(pl) { // photo only: the name is the answer, so it is never part of what players or the host screen get while guessing
+    return { category: pl.category, name: null, image: pl.img ? pl.img.url : null };
   }
   // Teams: team score = sum of its members' scores. Assignment is random (round-robin over a shuffle); the host can move people in the lobby.
   assignTeams() {
@@ -235,7 +236,7 @@ export class Game extends DurableObject {
       v.results = r.results;
     }
     if (role === 'host') {
-      v.categories = this.categories(); v.count = PLACES.length;
+      v.categories = this.categories(); v.count = PLACES.length; v.photos = PHOTO_PLACES.length;
     } else {
       const p = r.players[pid];
       if (p) {
@@ -354,7 +355,6 @@ export class Game extends DurableObject {
         if ('rounds' in b) s.rounds = clamp(Math.round(+b.rounds) || 10, 3, 30);
         if ('seconds' in b) s.seconds = clamp(Math.round(+b.seconds) || 45, 15, 180);
         if ('category' in b && this.categories().includes(b.category)) s.category = b.category;
-        if ('hideName' in b) s.hideName = !!b.hideName;
         if ('max' in b) s.max = clamp(Math.round(+b.max) || 20, 4, 20);
         if ('game' in b && GAMES.includes(b.game)) s.game = b.game;
         if ('teams' in b) { const t = Math.round(+b.teams) || 0; s.teams = t < 2 ? 0 : clamp(t, 2, 6); this.assignTeams(); }
@@ -368,7 +368,8 @@ export class Game extends DurableObject {
       if (a === 'start' && r.phase === 'lobby') {
         if (s.game !== 'globetrotters') return json({ error: 'This game is run from the host screen.' }, 400);
         if (!this.players().length) return json({ error: 'No players yet.' }, 400);
-        const pool = s.category === 'All' ? PLACES : PLACES.filter(p => p.category === s.category);
+        const pool = s.category === 'All' ? PHOTO_PLACES : PHOTO_PLACES.filter(p => p.category === s.category);
+        if (!pool.length) return json({ error: PHOTO_PLACES.length ? 'No places with photos in that category.' : 'No place photos have been added yet. Globe Trotters is photo-only, so run fetch_images.py and deploy (see the README).' }, 400);
         r.rounds = shuffle(pool).slice(0, s.rounds); r.idx = -1;
         await this.startRound(); return json({ ok: true });
       }

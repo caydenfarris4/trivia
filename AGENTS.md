@@ -25,7 +25,7 @@ It runs on **Cloudflare Workers** (the owner's existing paid Cloudflare plan), l
 Games 3 and 4 replaced earlier pure-trivia games (Last One Standing, Higher or Lower) at the owner's request. Don't bring them back unless asked. The old clue-based geography game was also replaced by the live Globe Trotters.
 
 ### 2.1 The Big Board
-- Menu shows the four boards (tagged NEW / PLAYED via `localStorage` key `gn.jp.played`).
+- **The host picks the board when choosing the game**: selecting The Big Board on the setup screen reveals the four boards (name, categories, final topic, tagged NEW / PLAYED via `localStorage` key `gn.jp.played`). Default = the first board not played yet (`chosenBoard()`). The lobby shows the chosen board in a dropdown so it can be changed before Start, and Start opens that board directly (no menu). Play Again replays the same board when one was picked explicitly, otherwise the next unplayed one.
 - Each board: 5 categories × 5 clues ($200–$1000), one hidden **Daily Double** (never on the $200 row), and a **Final** round.
 - Turn: the player in control picks a tile → clue shows → host taps who buzzed → **✓ Correct** (+value, that player gets control) or **✗ Wrong** (−value, locked out of this clue). **Nobody — show answer** reveals without scoring. Optional 15s timer button plays "think" music.
 - Daily Double: only the player in control, wager 5…max(score, 1000).
@@ -36,8 +36,8 @@ Games 3 and 4 replaced earlier pure-trivia games (Last One Standing, Higher or L
 Flow: **setup (host picks Globe Trotters) → lobby → (guess → reveal) × N → end**.
 1. Host picks Globe Trotters, the player limit and teams on the setup screen and opens the lobby. The server creates a game and shows the **4-digit code** and the join address (the address the host page was opened with).
 2. Players open that address on their phone (`/` serves `play.html`), type code + name. Up to the host's player limit (`max` setting, 4–20). Names pop up on the big screen as people join.
-3. In the same lobby the host picks rounds (dropdown: 5, 8, 10, 15, 20), seconds (dropdown: 20, 30, 45, 60, 90), category, hide-name toggle, then presses **Start**. The server accepts wider values than the dropdowns offer (rounds 3–30, seconds 15–180, max players 4–20) and clamps anything outside that range.
-4. Each round the place (name + category, and a photo if available) goes to every phone. Players tap a map to drop/move a pin and press **Lock in**. The round ends when the timer ends **or every connected player has locked**. A placed-but-unlocked pin still counts at timeout.
+3. In the same lobby the host picks rounds (dropdown: 5, 8, 10, 15, 20), seconds (dropdown: 20, 30, 45, 60, 90), category, then presses **Start**. The server accepts wider values than the dropdowns offer (rounds 3–30, seconds 15–180, max players 4–20) and clamps anything outside that range.
+4. Each round a **photo of the place** goes to every phone and to the host screen. **Globe Trotters is photo-only: the place's name is never shown while guessing** (the server does not even send it before the reveal), so only places that have a photo are used (if there are fewer photo places than the chosen rounds, the game has fewer rounds). With **no** photos at all the lobby shows a warning and Start is disabled. Players tap a map to drop/move a pin and press **Lock in**. The round ends when the timer ends **or every connected player has locked**. A placed-but-unlocked pin still counts at timeout.
 5. Reveal: host screen shows a Leaflet map with the answer (⭐ + radius circle), all pins, dashed lines, a ranked list, the blurb and photo credit. Phones show their own distance, points and rank. The host clicks **Next Round ▸** to send the next place.
 6. After the last round: podium on the host screen, final rank on phones. **Play Again** returns to the lobby with the same players and zeroed scores.
 
@@ -130,7 +130,7 @@ Each bank `.js` file begins with a comment that documents its own format. Read i
 
 ### 5.1 Host app (`index.html`, one file, vanilla JS, no build)
 Globals and conventions:
-- `S.screen` — current screen name (`setup`, `lobby`, `jp-menu`, `jp-board`, `jp-clue`, `jp-final`, `gt`, `sf`, `cc`, `results`). `inGame()` = screen matches `/^(jp|gt|sf|cc)/` or `results`.
+- `S.screen` — current screen name (`setup`, `lobby`, `jp-board`, `jp-clue`, `jp-final`, `gt`, `sf`, `cc`, `results`). `inGame()` = screen matches `/^(jp|gt|sf|cc)/` or `results`.
 - `G` — state of the running game (`G.g` is `jp|gt|sf|cc`). `players` — the roster `{id,name,color,score,out,streak,team}`, rebuilt from the lobby's joined players (`syncPlayers()`) each time a host-run game starts. `G.lp` (if set) overrides the scoreboard list; Globe Trotters sets it from the server.
 - **Event delegation:** every clickable has `data-act="name"`; one `document` click listener calls `ACT[name](el)`. Selects/checkboxes use `data-chg` and the `CHG` map. Add a new button = add `data-act` in the HTML string and a function in `ACT`.
 - Rendering is string templates → `$('#view').innerHTML`. Call `renderBoard()` after any score change (the bottom chip scoreboard).
@@ -139,7 +139,7 @@ Globals and conventions:
 - **Modules:** `JP`, `GT`, `SF`, `CC` (one object per game, each with start/round/draw). `finish(title)` shows the podium + confetti + win fanfare for any game (`replay` action restarts the game; for Globe Trotters it calls `GT.again()`).
 - `T` = shared countdown timer (`T.start(sec,{onEnd,tickFrom})`, `T.html(sec)` renders the bar with ids `#tfill`/`#tnum`). `T.stop()` before leaving a screen.
 - `Snd` = Web Audio engine. Loops: `lobby`, `groove`, `think`, `hurry` (`Snd.loop(name)`, `Snd.stop()`). Effects via `Snd.play(name)`: `correct wrong buzz tick tickHi timeup reveal dd out pick win`. Audio only starts after the first click (browser rule); `Snd.init()` runs in the click listener.
-- Persistence (`localStorage`, always try/catch): `gn.roster` (last setup choices: player limit, teams, game), `gn.room` (`{code,token}` of the current game night so a refresh reconnects), `gn.jp.played` (which boards were finished).
+- Persistence (`localStorage`, always try/catch): `gn.roster` (last setup choices: player limit, teams, game, Big Board board), `gn.room` (`{code,token}` of the current game night so a refresh reconnects), `gn.jp.played` (which boards were finished).
 - Colors: player i gets `hsl(i*137.508 mod 360, 78%, 58%)` (golden angle) — the server uses the same formula so host and phones agree.
 
 ### 5.2 Server (`src/worker.js`, a Cloudflare Worker + two Durable Objects)
@@ -180,7 +180,7 @@ Sections `s-join`, `s-wait`, `s-play`, `s-end`. One Leaflet map instance reused 
 
 - **Jeopardy:** the source CSV is `game,category,points,clue,answer`, with `Final` as the points value and a `Final Jeopardy: <topic>` category for each game's final. A one-off converter was used to produce `public/banks/jeopardy.js`; to regenerate from a new CSV, parse it the same way (respect quoted commas) and write `{boards:[{name,dailyDoubles,categories:[{name,clues:[{v,q,a}]}],final:{category,q,a}}]}`.
 - **Spot the Fake / Crowd Control:** edit the arrays in the bank files; formats are in each file's header.
-- **Globe Trotters:** edit `public/banks/globetrotters_bank.csv`. `radius_km` is the "close enough" zone (0 penalty inside it). Optional photos: `cd public/banks && python fetch_images.py` (set a real contact email in its User-Agent first; needs `pip install requests` and internet), then review the output because the top Wikipedia hit isn't always the right picture. Override one with a file in `public/img/` and its filename in `image_file`.
+- **Globe Trotters:** edit `public/banks/globetrotters_bank.csv`. `radius_km` is the "close enough" zone (0 penalty inside it). **Photos are required** (the game is photo-only): run `cd public/banks && python fetch_images.py` (set a real contact email in its User-Agent first; needs `pip install requests` and internet), **review the output** because the top Wikipedia hit isn't always the right picture (delete or fix bad rows; rows with no `image_url` are skipped), then commit `globetrotters_images.csv` and deploy. Override one photo with your own file in `public/img/` and its filename in the `image_file` column. As of the last check **no place has a photo yet**, so Globe Trotters cannot start until this is done.
 - **Accuracy rule (owner requirement):** content you write (Spot the Fake, Crowd Control, blurbs) must be factually right. Prefer stable facts; avoid anything that changes yearly. Do **not** silently change the owner's clues; flag doubts instead. Known unverified owner clues (Game 3 Reality TV: *The Traitors: New Blood*, Survivor 51 "blood ring", Rob Rausch winning Traitors S4) were reported to the owner for checking.
 
 ## 7. Testing
@@ -213,7 +213,7 @@ Tips: `wrangler dev` rewrites the request's host name to the route in `wrangler.
 - Host resume after a page refresh or re-login (a refresh still creates a new room; the old game's code stops working).
 - Move the Auth/Game data to a nicer admin view, rate-limit joins, scheduled cleanup of old game objects (finished games are replaced, not deleted, until the next game starts).
 - Change-password screen, and more than one host account (invite).
-- Run `fetch_images.py`, review photos, add `globetrotters_images.csv`.
+- **Run `fetch_images.py`, review the photos and commit `globetrotters_images.csv`: required before Globe Trotters can be played** (it is photo-only). This sandbox cannot reach Wikipedia, so it has to be run on a machine with internet.
 - Optional speed bonus (Kahoot-style) in `endRound` scoring.
 - QR code for the join address in the Globe Trotters lobby.
 - Let phones also join Spot the Fake / Crowd Control (currently host-run).

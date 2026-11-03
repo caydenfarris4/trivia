@@ -293,8 +293,8 @@ const T={id:null,
 
 /* ================= players / roster ================= */
 let players=[],G=null,lastGame=null,S={screen:'setup'};
-let roster={n:8,teams:0,game:'globetrotters'}; // setup choices only: how many may join, how many teams, which game. Names come from the players' phones.
-try{const r=JSON.parse(localStorage.getItem('gn.roster')||'null');if(r&&r.n)roster={n:r.n,teams:r.teams||0,game:r.game||'globetrotters'};}catch(e){}
+let roster={n:8,teams:0,game:'globetrotters',board:null}; // setup choices only: how many may join, how many teams, which game. Names come from the players' phones.
+try{const r=JSON.parse(localStorage.getItem('gn.roster')||'null');if(r&&r.n)roster={n:r.n,teams:r.teams||0,game:r.game||'globetrotters',board:Number.isInteger(r.board)?r.board:null};}catch(e){}
 const saveRoster=()=>{try{localStorage.setItem('gn.roster',JSON.stringify(roster));}catch(e){}};
 
 /* ================= the live room: players join on their phones with the game code ================= */
@@ -416,12 +416,26 @@ function finish(title){
   renderBoard();confetti();Snd.play('win');
 }
 
-/* ================= screens: setup + hub ================= */
+/* ================= screens: setup + lobby ================= */
+// The Big Board: the host picks which of the boards to play when choosing the game (and can change it in the lobby).
+const playedBoards=()=>{try{return JSON.parse(localStorage.getItem('gn.jp.played')||'[]');}catch(e){return [];}};
+function chosenBoard(){ // the picked board, or by default the first one not played yet
+  const bs=BANKS.jeopardy.boards;
+  if(Number.isInteger(roster.board)&&roster.board>=0&&roster.board<bs.length)return roster.board;
+  const pl=playedBoards(),f=bs.findIndex((b,i)=>!pl.includes(i));
+  return f>=0?f:0;
+}
+const boardCats=b=>b.categories.map(c=>esc(c.name)).join(' · ')+'<br><b style="color:var(--gold)">Final: '+esc(b.final.category)+'</b>';
+function boardCards(){
+  const pl=playedBoards(),sel=chosenBoard();
+  return`<div class="cards" style="margin:8px auto;max-width:1000px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">${BANKS.jeopardy.boards.map((b,i)=>`<button class="card sm${i===sel?' picked':''}" style="--a:#4f7bff" data-act="pick-board" data-i="${i}"><h2>${esc(b.name.toUpperCase())}</h2><p>${boardCats(b)}</p>${pl.includes(i)?'<span class="tag warn">PLAYED</span>':'<span class="tag">NEW</span>'}</button>`).join('')}</div>`;
+}
 function viewSetup(msg){
   GT.stop();S.screen='setup';G=null;T.stop();Snd.stop();renderBoard();
   $('#view').innerHTML=`<h1 class="logo">GAME NIGHT<span>LIVE</span></h1>
   <div class="panel"><div class="lbl">1 · Which game are we playing?</div>
   <div class="cards" style="margin:8px auto;max-width:1000px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${GAMES.map(g=>`<button class="card sm${roster.game===g.id?' picked':''}" style="--a:${g.color}" data-act="pick-game" data-id="${g.id}"><div class="ic">${g.icon}</div><h2>${g.name}</h2><p>${g.tag}</p></button>`).join('')}</div>
+  <div id="boardpick"${roster.game==='jeopardy'?'':' hidden'}><div class="lbl sm">Which board?</div>${boardCards()}</div>
   <div class="lbl sm">2 · How many players can join?</div>
   <div class="stepper"><button class="rnd" data-act="dec">−</button><div class="big" id="cnt">${roster.n}</div><button class="rnd" data-act="inc">+</button></div>
   <input type="range" id="rng" min="4" max="20" value="${roster.n}">
@@ -450,9 +464,11 @@ const LOBBY={key:'',seen:new Set(),
       const gtset=g.id==='globetrotters'?`<div class="settings">
           <label>Rounds ${sel('rounds',[5,8,10,15,20],set.rounds)}</label>
           <label>Seconds to guess ${sel('seconds',[20,30,45,60,90],set.seconds)}</label>
-          <label>Places ${sel('category',s.categories||['All'],set.category)}</label>
-          <label class="chk"><input type="checkbox" data-chg="gt-set" data-k="hideName" ${set.hideName?'checked':''}> Hide the name (photo only)</label></div>`:'';
-      $('#view').innerHTML=`<div id="lby" class="lobbywrap"><div class="gamebadge" style="--a:${g.color}">${g.icon} ${g.name}</div>${joinBox(s.code)}${gtset}
+          <label>Places ${sel('category',s.categories||['All'],set.category)}</label></div>
+        <div class="hint" id="lphotos"></div>`:'';
+      const pl=playedBoards(),cb=chosenBoard();
+      const jpset=g.id==='jeopardy'?`<div class="settings"><label>Board <select data-chg="jp-board">${BANKS.jeopardy.boards.map((b,i)=>`<option value="${i}"${i===cb?' selected':''}>${esc(b.name)}${pl.includes(i)?' (played)':''}</option>`).join('')}</select></label></div><div class="hint" id="lboardinfo">${boardCats(BANKS.jeopardy.boards[cb])}</div>`:'';
+      $('#view').innerHTML=`<div id="lby" class="lobbywrap"><div class="gamebadge" style="--a:${g.color}">${g.icon} ${g.name}</div>${joinBox(s.code)}${gtset}${jpset}
         <div class="lbl" id="lcount"></div><div id="lplayers"></div>
         <div class="row" style="margin-top:0"><button class="btn sm alt" id="lshuf" data-act="gt-shuffle" hidden>🔀 Shuffle teams</button></div>
         <button id="lgo" class="btn xl" data-act="start-game">Start ${g.name} ▶</button>
@@ -474,7 +490,14 @@ const LOBBY={key:'',seen:new Set(),
       });
     }
     $('#lshuf').hidden=!s.teams;
-    $('#lgo').disabled=!s.players.length;
+    let noPhotos=false;
+    if(g.id==='globetrotters'){ // photo only: players see a photo, never the place's name, so places without a photo are not used
+      noPhotos=!s.photos;
+      $('#lphotos').innerHTML=noPhotos
+        ?'<b style="color:var(--bad)">⚠️ No place photos have been added yet.</b> Globe Trotters is photo-only, so it can\'t start. Run <code>fetch_images.py</code> (see the README), push the result, and wait for the deploy.'
+        :`📷 Photo only: players see a picture and drop a pin. ${s.photos} of ${s.count} places have photos and will be used.`;
+    }
+    $('#lgo').disabled=!s.players.length||noPhotos;
   },
 };
 function viewLobby(){
@@ -484,7 +507,7 @@ function viewLobby(){
 
 const GAMES=[
   {id:'jeopardy',icon:'🎯',name:'THE BIG BOARD',color:'#4f7bff',tag:'Four full Jeopardy boards. Daily Double, secret-wager Final round.',
-    info:b=>b.boards.length+' full boards',start:()=>JP.menu()},
+    info:b=>b.boards.length+' full boards',start:()=>JP.start(chosenBoard())},
   {id:'globetrotters',icon:'🌍',name:'GLOBE TROTTERS',color:'#2fd573',live:true,tag:'GeoGuessr-style. Everyone joins on their phone, drops a pin, and scores by how close they get.',
     start:()=>ROOM.post('/api/host/start')},
   {id:'spotthefake',icon:'🕵️',name:'SPOT THE FAKE',color:'#ff4d5e',tag:'Two truths and a lie, with wild-but-true facts. Can the room spot the liar?',
@@ -494,11 +517,6 @@ const GAMES=[
 ];
 /* ================= GAME 1: THE BIG BOARD ================= */
 const JP={
-  menu(){
-    S.screen='jp-menu';G=null;T.stop();Snd.loop('lobby');renderBoard();
-    let played=[];try{played=JSON.parse(localStorage.getItem('gn.jp.played')||'[]');}catch(e){}
-    $('#view').innerHTML=`<h1 class="logo" style="font-size:clamp(30px,4.5vw,64px)">THE BIG BOARD</h1><div class="sub">Pick a board</div><div class="setgrid">${BANKS.jeopardy.boards.map((b,i)=>`<button class="card" style="--a:#4f7bff" data-act="jp-board" data-i="${i}"><h2 style="font-size:30px">${esc(b.name.toUpperCase())}</h2><p style="min-height:0">${b.categories.map(c=>esc(c.name)).join(' · ')}<br><b style="color:var(--gold)">Final: ${esc(b.final.category)}</b></p>${played.includes(i)?'<span class="tag warn">PLAYED</span>':'<span class="tag">NEW</span>'}</button>`).join('')}</div>`;
-  },
   start(i){
     const b=BANKS.jeopardy.boards[i];resetScores();
     const cells=[];b.categories.forEach((c,ci)=>c.clues.forEach((_,ri)=>{if(ri>0)cells.push(ci+'-'+ri);}));
@@ -710,7 +728,8 @@ const ACT={
     try{if(await ROOM.create(roster.n,roster.teams||0,roster.game))return viewLobby();throw new Error('no room');}
     catch(e){viewSetup('Could not open the lobby. Open the site\'s /host page (or run npm run dev), log in, and try again.');}
   },
-  'pick-game':el=>{roster.game=el.dataset.id;saveRoster();document.querySelectorAll('[data-act=pick-game]').forEach(c=>c.classList.toggle('picked',c===el));},
+  'pick-game':el=>{roster.game=el.dataset.id;saveRoster();document.querySelectorAll('[data-act=pick-game]').forEach(c=>c.classList.toggle('picked',c===el));const bp=$('#boardpick');if(bp)bp.hidden=roster.game!=='jeopardy';},
+  'pick-board':el=>{roster.board=+el.dataset.i;saveRoster();const bp=$('#boardpick');if(bp)bp.innerHTML='<div class="lbl sm">Which board?</div>'+boardCards();},
   'start-game':()=>{const g=ROOM.st&&ROOM.st.settings.game;if(!g)return;if(g==='globetrotters')ROOM.post('/api/host/start');else startGame(g);},
   'new-room':()=>{if(!confirm('Start a brand-new game night? Everyone will need to join again with the new code.'))return;ROOM.leave();viewSetup();},
   'gt-shuffle':()=>ROOM.post('/api/host/teams',{shuffle:true}),
@@ -721,7 +740,6 @@ const ACT={
   replay:()=>{if(G&&G.g==='gt')return GT.again();startGame(lastGame);},
 
   /* big board */
-  'jp-board':el=>JP.start(+el.dataset.i),
   'jp-pick':el=>{
     const k=el.dataset.k,[ci,ri]=k.split('-').map(Number);
     G.cur={ci,ri,k,dd:G.dd.has(k),sel:null,stage:'open',wager:0};G.locked=new Set();Snd.stop();
@@ -785,7 +803,7 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');if(!el||el.disabled)return;
   Snd.init();ACT[el.dataset.act]&&ACT[el.dataset.act](el);
 });
-const CHG={'teams':el=>{roster.teams=+el.value||0;saveRoster();},'gt-set':el=>{
+const CHG={'jp-board':el=>{roster.board=+el.value;saveRoster();const i=$('#lboardinfo');if(i)i.innerHTML=boardCats(BANKS.jeopardy.boards[chosenBoard()]);},'teams':el=>{roster.teams=+el.value||0;saveRoster();},'gt-set':el=>{
   const k=el.dataset.k;let v=el.type==='checkbox'?el.checked:el.value;
   if(k!=='category'&&el.type!=='checkbox')v=+v;
   ROOM.post('/api/host/settings',{[k]:v});
