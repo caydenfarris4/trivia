@@ -36,7 +36,7 @@ Games 3 and 4 replaced earlier pure-trivia games (Last One Standing, Higher or L
 Flow: **lobby → (guess → reveal) × N → end**.
 1. Host opens the game. The server creates a room and shows the **4-digit code** and the join address (LAN IP).
 2. Players open that address on their phone (`/` on a non-local client serves `play.html`), type code + name. 4–20 players (`max` setting).
-3. Host picks rounds (5–20), seconds (20–90), category, hide-name toggle, then **Start**.
+3. Host picks rounds (dropdown: 5, 8, 10, 15, 20), seconds (dropdown: 20, 30, 45, 60, 90), category, hide-name toggle, then **Start**. The server accepts wider values than the dropdowns offer (rounds 3–30, seconds 15–180, max players 4–20) and clamps anything outside that range.
 4. Each round the place (name + category, and a photo if available) goes to every phone. Players tap a map to drop/move a pin and press **Lock in**. The round ends when the timer ends **or every connected player has locked**. A placed-but-unlocked pin still counts at timeout.
 5. Reveal: host screen shows a Leaflet map with the answer (⭐ + radius circle), all pins, dashed lines, a ranked list, the blurb and photo credit. Phones show their own distance, points and rank. The host clicks **Next Round ▸** to send the next place.
 6. After the last round: podium on the host screen, final rank on phones. **Play Again** returns to the lobby with the same players and zeroed scores.
