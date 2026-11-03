@@ -8,6 +8,28 @@ const http = require('http'), fs = require('fs'), path = require('path'), os = r
 const PORT = +process.env.PORT || 3000;
 const ROOT = __dirname;
 
+/* ---------- host login ---------- */
+// The host signs in with ONE shared password (env HOST_PASSWORD). Players never log in: they join with the game code.
+// If HOST_PASSWORD is not set, a random one is generated each start and printed in the console.
+let PW_GENERATED = false;
+const HOST_PASSWORD = process.env.HOST_PASSWORD || (PW_GENERATED = true, crypto.randomBytes(6).toString('base64url'));
+const sha = x => crypto.createHash('sha256').update(String(x)).digest();
+const pwOk = x => crypto.timingSafeEqual(sha(x), sha(HOST_PASSWORD));
+const SESSION_MS = 12 * 3600 * 1000;
+const sessions = new Map(); // cookie token -> expiry
+const fails = new Map();    // remote address -> { n, until }
+function cookieOf(req, name) {
+  for (const part of String(req.headers.cookie || '').split(';')) { const i = part.indexOf('='); if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim(); }
+  return '';
+}
+function isHost(req) {
+  const t = cookieOf(req, 'gn_host'), exp = sessions.get(t);
+  if (!exp) return false;
+  if (exp < Date.now()) { sessions.delete(t); return false; }
+  return true;
+}
+const secureReq = req => !!req.socket.encrypted || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+
 /* ---------- bank loading ---------- */
 function parseCSV(txt) {
   txt = txt.replace(/^﻿/, '');
@@ -55,21 +77,30 @@ function lanUrls() {
   for (const list of Object.values(os.networkInterfaces())) for (const n of list || []) if (n.family === 'IPv4' && !n.internal) out.push(`http://${n.address}:${PORT}`);
   return out;
 }
-const ownAddrs = () => { const s = new Set(['127.0.0.1', '::1']); for (const list of Object.values(os.networkInterfaces())) for (const n of list || []) s.add(n.address); return s; };
-const isLocal = req => { let a = req.socket.remoteAddress || ''; a = a.replace(/^::ffff:/, ''); return ownAddrs().has(a); };
+// Where players should go: the address the host used (e.g. https://trivia.example.com), or the LAN addresses when hosting locally.
+function joinUrls(req) {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const name = host.replace(/:\d+$/, '');
+  if (!host || name === 'localhost' || name === '127.0.0.1' || name === '[::1]') { const l = lanUrls(); return l.length ? l : ['http://' + (host || 'localhost:' + PORT)]; }
+  return [(secureReq(req) ? 'https://' : 'http://') + host];
+}
 
 /* ---------- game state ---------- */
+const TEAM_DEFS = [
+  { name: 'Red', color: '#ff4d5e' }, { name: 'Blue', color: '#4f7bff' }, { name: 'Green', color: '#2fd573' },
+  { name: 'Gold', color: '#ffcf3a' }, { name: 'Purple', color: '#b46bff' }, { name: 'Orange', color: '#ff9d1c' },
+];
 let room = null;
 const clients = new Set(); // { res, role, pid }
 
-function newRoom() {
+function newRoom(urls) {
   if (room && room.timer) clearTimeout(room.timer);
   for (const c of clients) { try { c.res.write('data: ' + JSON.stringify({ phase: 'closed', now: Date.now() }) + '\n\n'); c.res.end(); } catch (e) {} }
   clients.clear();
   room = {
     code: String(1000 + crypto.randomInt(9000)), hostToken: crypto.randomUUID(), phase: 'lobby',
-    settings: { rounds: 10, seconds: 45, category: 'All', hideName: false, max: 20 },
-    players: new Map(), rounds: [], idx: -1, deadline: 0, timer: null, results: null, places: loadPlaces(), seq: 0,
+    settings: { rounds: 10, seconds: 45, category: 'All', hideName: false, max: 20, teams: 0 },
+    players: new Map(), rounds: [], idx: -1, deadline: 0, timer: null, results: null, places: loadPlaces(), seq: 0, urls: urls || [],
   };
   return room;
 }
@@ -79,7 +110,26 @@ const categories = () => ['All', ...new Set(room.places.map(p => p.category))];
 
 function ranked() { return [...room.players.values()].sort((a, b) => b.score - a.score); }
 function playerList() {
-  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, score: p.score, locked: p.locked, connected: p.conn > 0 }));
+  return [...room.players.values()].map(p => ({ id: p.id, name: p.name, color: p.color, score: p.score, locked: p.locked, connected: p.conn > 0, team: p.team }));
+}
+// Teams: team score = sum of its members' scores. Assignment is random (round-robin over a shuffle); the host can move people in the lobby.
+function assignTeams() {
+  const n = room.settings.teams, list = shuffle([...room.players.values()]);
+  list.forEach((p, i) => { p.team = n ? i % n : null; });
+}
+function smallestTeam() {
+  const n = room.settings.teams, size = Array(n).fill(0);
+  for (const p of room.players.values()) if (p.team != null) size[p.team]++;
+  const min = Math.min(...size), pick = size.map((c, i) => c === min ? i : -1).filter(i => i >= 0);
+  return pick[crypto.randomInt(pick.length)];
+}
+function teamList() {
+  const n = room.settings.teams;
+  if (!n) return null;
+  return TEAM_DEFS.slice(0, n).map((t, i) => {
+    const m = [...room.players.values()].filter(p => p.team === i);
+    return { id: i, name: t.name, color: t.color, members: m.map(p => p.id), score: m.reduce((a, p) => a + p.score, 0), last: room.phase === 'reveal' ? m.reduce((a, p) => a + (p.last ? p.last.pts : 0), 0) : 0 };
+  });
 }
 function promptOf(pl) {
   const hide = room.settings.hideName && pl.img;
@@ -87,7 +137,7 @@ function promptOf(pl) {
 }
 function view(role, pid) {
   const r = room;
-  const v = { now: Date.now(), phase: r.phase, code: r.code, settings: r.settings, players: playerList(), idx: r.idx, total: r.rounds.length, deadline: r.deadline };
+  const v = { now: Date.now(), phase: r.phase, code: r.code, settings: r.settings, players: playerList(), teams: teamList(), idx: r.idx, total: r.rounds.length, deadline: r.deadline };
   if (r.phase === 'guess' || r.phase === 'reveal') v.prompt = promptOf(cur());
   if (r.phase === 'reveal') {
     const pl = cur();
@@ -95,12 +145,12 @@ function view(role, pid) {
     v.results = r.results;
   }
   if (role === 'host') {
-    v.urls = lanUrls(); v.categories = categories(); v.count = r.places.length;
+    v.urls = r.urls; v.categories = categories(); v.count = r.places.length;
   } else {
     const p = r.players.get(pid);
     if (p) {
       const order = ranked(), rank = order.findIndex(x => x.id === p.id) + 1;
-      v.me = { id: p.id, name: p.name, color: p.color, score: p.score, locked: p.locked, guess: p.guess, last: p.last, rank, of: order.length };
+      v.me = { id: p.id, name: p.name, color: p.color, team: p.team, score: p.score, locked: p.locked, guess: p.guess, last: p.last, rank, of: order.length };
     }
   }
   return v;
@@ -176,10 +226,31 @@ async function api(req, res, u) {
   }
   const b = req.method === 'POST' ? await body(req) : {};
 
+  if (u.pathname === '/api/login') {
+    if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
+    const ip = req.socket.remoteAddress || '?', f = fails.get(ip) || { n: 0, until: 0 };
+    if (f.until > Date.now()) return json(res, 429, { error: 'Too many wrong tries. Wait a few minutes and try again.' });
+    if (!pwOk(b.password || '')) {
+      f.n++; if (f.n >= 8) { f.until = Date.now() + 10 * 60 * 1000; f.n = 0; }
+      fails.set(ip, f);
+      return json(res, 401, { error: 'Wrong password.' });
+    }
+    fails.delete(ip);
+    const t = crypto.randomBytes(24).toString('base64url'); sessions.set(t, Date.now() + SESSION_MS);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `gn_host=${t}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}${secureReq(req) ? '; Secure' : ''}` });
+    return res.end(JSON.stringify({ ok: true }));
+  }
+  if (u.pathname === '/api/logout') {
+    sessions.delete(cookieOf(req, 'gn_host'));
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'gn_host=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' });
+    return res.end('{"ok":true}');
+  }
+  if (u.pathname === '/api/whoami') return json(res, 200, { host: isHost(req) });
   if (u.pathname === '/api/host/new') {
-    if (req.method !== 'POST' || !isLocal(req)) return json(res, 403, { error: 'host only' });
-    newRoom();
-    return json(res, 200, { token: room.hostToken, code: room.code, urls: lanUrls() });
+    if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
+    if (!isHost(req)) return json(res, 401, { error: 'login required' });
+    newRoom(joinUrls(req));
+    return json(res, 200, { token: room.hostToken, code: room.code, urls: room.urls });
   }
   if (u.pathname === '/api/join') {
     if (!room || b.code !== room.code) return json(res, 400, { error: 'That game code is not right.' });
@@ -190,7 +261,8 @@ async function api(req, res, u) {
     const taken = new Set([...room.players.values()].map(p => p.name.toLowerCase()));
     let n = name, k = 2; while (taken.has(n.toLowerCase())) n = name.slice(0, 12) + ' ' + k++;
     const id = String(room.players.size), token = crypto.randomUUID();
-    room.players.set(id, { id, token, name: n, color: colorOf(room.players.size), score: 0, guess: null, locked: false, conn: 0, last: null });
+    room.players.set(id, { id, token, name: n, color: colorOf(room.players.size), score: 0, guess: null, locked: false, conn: 0, last: null, team: null });
+    if (room.settings.teams) room.players.get(id).team = smallestTeam();
     json(res, 200, { pid: id, token, name: n });
     return broadcast();
   }
@@ -218,6 +290,12 @@ async function api(req, res, u) {
       if ('category' in b && categories().includes(b.category)) s.category = b.category;
       if ('hideName' in b) s.hideName = !!b.hideName;
       if ('max' in b) s.max = clamp(Math.round(+b.max) || 20, 4, 20);
+      if ('teams' in b) { const t = Math.round(+b.teams) || 0; s.teams = t < 2 ? 0 : clamp(t, 2, 6); assignTeams(); }
+      broadcast(); return json(res, 200, { ok: true });
+    }
+    if (act === 'teams' && room.phase === 'lobby' && room.settings.teams) {
+      if (b.shuffle) assignTeams();
+      if (b.move) { const p = room.players.get(String(b.move.pid)), t = Math.round(+b.move.team); if (p && t >= 0 && t < room.settings.teams) p.team = t; }
       broadcast(); return json(res, 200, { ok: true });
     }
     if (act === 'start' && room.phase === 'lobby') {
@@ -243,16 +321,24 @@ http.createServer((req, res) => {
   const u = new URL(req.url, 'http://x');
   if (u.pathname.startsWith('/api/')) return api(req, res, u).catch(e => { console.error(e); try { json(res, 500, { error: 'server error' }); } catch (_) {} });
   let p = decodeURIComponent(u.pathname);
-  if (p === '/') p = isLocal(req) ? '/index.html' : '/play.html';
-  if (p === '/play') p = '/play.html';
-  if (p === '/index.html' || p === '/play.html') return sendFile(res, path.join(ROOT, p));
-  if (/^\/banks\/[\w-]+\.js$/.test(p)) return sendFile(res, path.join(ROOT, p));
+  if (p === '/' || p === '/play') return sendFile(res, path.join(ROOT, 'play.html'));          // players: join with the game code
+  if (p === '/login') return sendFile(res, path.join(ROOT, 'login.html'));
+  if (p === '/host' || p === '/index.html') {                                                    // host app: password required
+    if (!isHost(req)) { res.writeHead(302, { Location: '/login' }); return res.end(); }
+    return sendFile(res, path.join(ROOT, 'index.html'));
+  }
+  if (p === '/play.html') return sendFile(res, path.join(ROOT, 'play.html'));
+  if (/^\/banks\/[\w-]+\.js$/.test(p)) {                                                       // question banks hold the answers: host only
+    if (!isHost(req)) { res.writeHead(401); return res.end('Host login required'); }
+    return sendFile(res, path.join(ROOT, p));
+  }
   if (p.startsWith('/img/')) return sendFile(res, path.join(ROOT, 'banks', 'images', path.basename(p)));
   res.writeHead(404); res.end('Not found');
 }).listen(PORT, '0.0.0.0', () => {
   console.log('\n  GAME NIGHT LIVE is running.\n');
-  console.log('  Host screen (open on this computer):  http://localhost:' + PORT);
+  console.log('  Host login:                           http://localhost:' + PORT + '/host');
+  console.log('  Host password:                        ' + (PW_GENERATED ? HOST_PASSWORD + '   (random; set HOST_PASSWORD to choose your own)' : '(from HOST_PASSWORD)'));
   const urls = lanUrls();
-  console.log('  Players join on their phones at:      ' + (urls.length ? urls.join('   or   ') : '(no network found, connect to Wi-Fi)'));
+  console.log('  Players join at:                      ' + (urls.length ? urls.join('   or   ') : '(no network found, connect to Wi-Fi)'));
   console.log('\n  Leave this window open while you play. Press Ctrl+C to stop.\n');
 });

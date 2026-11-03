@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Host Login · Game Night Live</title>
+<style>
+:root{--bg:#050826;--gold:#ffcf3a;--gold2:#ff9d1c;--mute:#9fb0ff;--bad:#ff4d5e}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(ellipse at 50% 0,#1b2a8a,var(--bg) 65%);color:#fff;font-family:"Segoe UI",system-ui,Arial,sans-serif;display:grid;place-items:center}
+form{width:min(92vw,420px);display:flex;flex-direction:column;gap:12px;text-align:center}
+.logo{font-family:Impact,"Arial Black",sans-serif;letter-spacing:3px;color:var(--gold);font-size:44px;text-shadow:0 3px 0 #8a4f00;margin:0;line-height:1.05}
+.logo span{display:block;font-size:.4em;letter-spacing:10px;color:#fff}
+input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold);background:#000a;color:#fff;text-align:center;width:100%}
+.btn{font-family:Impact,"Arial Black",sans-serif;letter-spacing:1.5px;font-size:24px;color:#2a1700;background:linear-gradient(#ffe27a,var(--gold2));border:0;border-bottom:5px solid #a65f00;border-radius:14px;padding:14px 20px;width:100%;text-transform:uppercase;cursor:pointer}
+.btn:active{transform:translateY(3px);border-bottom-width:2px}
+.btn:disabled{filter:grayscale(1) brightness(.6)}
+.err{color:var(--bad);min-height:1.2em}
+a{color:var(--mute)}
+</style>
+</head>
+<body>
+<form id="f">
+  <h1 class="logo">GAME NIGHT<span>HOST LOGIN</span></h1>
+  <input id="pw" type="password" placeholder="Host password" autocomplete="current-password" autofocus>
+  <div class="err" id="err" role="alert"></div>
+  <button class="btn" id="go" type="submit">Log in</button>
+  <a href="/">Joining a game? Enter your code here</a>
+</form>
+<script>
+const $ = s => document.querySelector(s);
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  $('#err').textContent = ''; $('#go').disabled = true;
+  try {
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) { location.href = '/host'; return; }
+    $('#err').textContent = j.error || 'Could not log in.';
+  } catch (x) { $('#err').textContent = 'Can\'t reach the server.'; }
+  $('#go').disabled = false; $('#pw').select();
+};
+</script>
+</body>
+</html>
