@@ -8,27 +8,58 @@ const http = require('http'), fs = require('fs'), path = require('path'), os = r
 const PORT = +process.env.PORT || 3000;
 const ROOT = __dirname;
 
-/* ---------- host login ---------- */
-// The host signs in with ONE shared password (env HOST_PASSWORD). Players never log in: they join with the game code.
-// If HOST_PASSWORD is not set, a random one is generated each start and printed in the console.
-let PW_GENERATED = false;
-const HOST_PASSWORD = process.env.HOST_PASSWORD || (PW_GENERATED = true, crypto.randomBytes(6).toString('base64url'));
-const sha = x => crypto.createHash('sha256').update(String(x)).digest();
-const pwOk = x => crypto.timingSafeEqual(sha(x), sha(HOST_PASSWORD));
+/* ---------- host accounts ---------- */
+// Accounts live in DATA_DIR/users.json (put DATA_DIR on a persistent disk when deploying). Passwords are stored as scrypt hashes.
+// Sign-up is open ONLY while no account exists: the first account created becomes the host and sign-up then closes.
+// Optional SETUP_CODE env var: if set, it must be entered to create that first account (stops a stranger from claiming it).
+// Forgot your password? Stop the server and delete DATA_DIR/users.json; sign-up reopens.
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SETUP_CODE = process.env.SETUP_CODE || '';
+let users = {}; // lowercased username -> { name, salt, hash, created }
+try { users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
+catch (e) {
+  // Missing file = no accounts yet. Any OTHER problem (corrupt file) must stop the server: treating it as "no accounts" would reopen sign-up.
+  if (e.code !== 'ENOENT') { console.error('\n  Cannot read ' + USERS_FILE + ': ' + e.message + '\n  Fix or delete that file, then start again.\n'); process.exit(1); }
+}
+function saveUsers() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = USERS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(users), { mode: 0o600 });
+  fs.renameSync(tmp, USERS_FILE);
+}
+const hasUsers = () => Object.keys(users).length > 0;
+const hashPw = (pw, salt) => crypto.scryptSync(String(pw), salt, 64);
+const DUMMY_SALT = crypto.randomBytes(16);
+function checkLogin(name, pw) { // constant-ish work whether or not the user exists
+  const u = users[String(name || '').trim().toLowerCase()];
+  const h = hashPw(pw, u ? Buffer.from(u.salt, 'hex') : DUMMY_SALT);
+  return u && crypto.timingSafeEqual(h, Buffer.from(u.hash, 'hex')) ? u : null;
+}
+const safeEq = (a, b) => crypto.timingSafeEqual(crypto.createHash('sha256').update(String(a)).digest(), crypto.createHash('sha256').update(String(b)).digest());
 const SESSION_MS = 12 * 3600 * 1000;
-const sessions = new Map(); // cookie token -> expiry
+const sessions = new Map(); // cookie token -> { exp, user }
 const fails = new Map();    // remote address -> { n, until }
+const ipOf = req => req.socket.remoteAddress || '?';
+const blocked = req => { const f = fails.get(ipOf(req)); return !!f && f.until > Date.now(); };
+function noteFail(req) { const ip = ipOf(req), f = fails.get(ip) || { n: 0, until: 0 }; f.n++; if (f.n >= 8) { f.until = Date.now() + 10 * 60 * 1000; f.n = 0; } fails.set(ip, f); }
 function cookieOf(req, name) {
   for (const part of String(req.headers.cookie || '').split(';')) { const i = part.indexOf('='); if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim(); }
   return '';
 }
-function isHost(req) {
-  const t = cookieOf(req, 'gn_host'), exp = sessions.get(t);
-  if (!exp) return false;
-  if (exp < Date.now()) { sessions.delete(t); return false; }
-  return true;
+function hostUser(req) { // the logged-in host's username, or null
+  const t = cookieOf(req, 'gn_host'), ses = sessions.get(t);
+  if (!ses) return null;
+  if (ses.exp < Date.now()) { sessions.delete(t); return null; }
+  return ses.user;
 }
+const isHost = req => !!hostUser(req);
 const secureReq = req => !!req.socket.encrypted || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+function startSession(req, res, user) {
+  const t = crypto.randomBytes(24).toString('base64url'); sessions.set(t, { exp: Date.now() + SESSION_MS, user });
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `gn_host=${t}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}${secureReq(req) ? '; Secure' : ''}` });
+  res.end(JSON.stringify({ ok: true, user }));
+}
 
 /* ---------- bank loading ---------- */
 function parseCSV(txt) {
@@ -228,24 +259,33 @@ async function api(req, res, u) {
 
   if (u.pathname === '/api/login') {
     if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
-    const ip = req.socket.remoteAddress || '?', f = fails.get(ip) || { n: 0, until: 0 };
-    if (f.until > Date.now()) return json(res, 429, { error: 'Too many wrong tries. Wait a few minutes and try again.' });
-    if (!pwOk(b.password || '')) {
-      f.n++; if (f.n >= 8) { f.until = Date.now() + 10 * 60 * 1000; f.n = 0; }
-      fails.set(ip, f);
-      return json(res, 401, { error: 'Wrong password.' });
-    }
-    fails.delete(ip);
-    const t = crypto.randomBytes(24).toString('base64url'); sessions.set(t, Date.now() + SESSION_MS);
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `gn_host=${t}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_MS / 1000}${secureReq(req) ? '; Secure' : ''}` });
-    return res.end(JSON.stringify({ ok: true }));
+    if (blocked(req)) return json(res, 429, { error: 'Too many wrong tries. Wait a few minutes and try again.' });
+    if (String(b.password || '').length > 200) return json(res, 400, { error: 'Wrong username or password.' });
+    const user = checkLogin(b.username, b.password || '');
+    if (!user) { noteFail(req); return json(res, 401, { error: 'Wrong username or password.' }); }
+    fails.delete(ipOf(req));
+    return startSession(req, res, user.name);
+  }
+  if (u.pathname === '/api/signup') { // only works while there are no accounts
+    if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
+    if (hasUsers()) return json(res, 403, { error: 'Sign-up is closed: a host account already exists.' });
+    if (blocked(req)) return json(res, 429, { error: 'Too many wrong tries. Wait a few minutes and try again.' });
+    if (SETUP_CODE && !safeEq(b.setupCode || '', SETUP_CODE)) { noteFail(req); return json(res, 401, { error: 'Wrong setup code.' }); }
+    const name = String(b.username || '').trim(), pw = String(b.password || '');
+    if (!/^[A-Za-z0-9_.-]{3,20}$/.test(name)) return json(res, 400, { error: 'Username must be 3-20 letters, numbers, dots, dashes or underscores.' });
+    if (pw.length < 8 || pw.length > 200) return json(res, 400, { error: 'Password must be at least 8 characters.' });
+    const salt = crypto.randomBytes(16);
+    users[name.toLowerCase()] = { name, salt: salt.toString('hex'), hash: hashPw(pw, salt).toString('hex'), created: new Date().toISOString() };
+    try { saveUsers(); }
+    catch (e) { users = {}; console.error('Could not save account:', e.message); return json(res, 500, { error: 'The account could not be saved on the server (is DATA_DIR writable?).' }); }
+    return startSession(req, res, name);
   }
   if (u.pathname === '/api/logout') {
     sessions.delete(cookieOf(req, 'gn_host'));
     res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'gn_host=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' });
     return res.end('{"ok":true}');
   }
-  if (u.pathname === '/api/whoami') return json(res, 200, { host: isHost(req) });
+  if (u.pathname === '/api/whoami') { const user = hostUser(req); return json(res, 200, { host: !!user, user, canSignup: !hasUsers(), needsSetupCode: !hasUsers() && !!SETUP_CODE }); }
   if (u.pathname === '/api/host/new') {
     if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
     if (!isHost(req)) return json(res, 401, { error: 'login required' });
@@ -337,7 +377,8 @@ http.createServer((req, res) => {
 }).listen(PORT, '0.0.0.0', () => {
   console.log('\n  GAME NIGHT LIVE is running.\n');
   console.log('  Host login:                           http://localhost:' + PORT + '/host');
-  console.log('  Host password:                        ' + (PW_GENERATED ? HOST_PASSWORD + '   (random; set HOST_PASSWORD to choose your own)' : '(from HOST_PASSWORD)'));
+  console.log('  Host account:                         ' + (hasUsers() ? 'ready (log in at /login)' : 'NONE YET: open /login and create it (first account becomes the host)'));
+  console.log('  Accounts saved in:                    ' + DATA_DIR);
   const urls = lanUrls();
   console.log('  Players join at:                      ' + (urls.length ? urls.join('   or   ') : '(no network found, connect to Wi-Fi)'));
   console.log('\n  Leave this window open while you play. Press Ctrl+C to stop.\n');

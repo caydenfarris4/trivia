@@ -736,7 +736,7 @@ const CHG={'teams':el=>{roster.teams=+el.value||0;saveRoster();},'gt-set':el=>{
   GT.post('/api/host/settings',{[k]:v});
 }};
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(el&&CHG[el.dataset.chg])CHG[el.dataset.chg](el);});
-if(location.protocol.startsWith('http'))$('#logoutbtn').hidden=false;
+if(location.protocol.startsWith('http')){$('#logoutbtn').hidden=false;fetch('/api/whoami').then(r=>r.json()).then(w=>{if(w.user)$('#logoutbtn').textContent='🔒 '+w.user+' · Log out';}).catch(()=>{});}
 viewSetup();
 </script>
 </body>
