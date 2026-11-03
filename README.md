@@ -17,7 +17,7 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 ## The games
 | Game | How it plays |
 |---|---|
-| **The Big Board** | Host-run Jeopardy. Four boards from `public/banks/jeopardy.js`. |
+| **The Big Board** | Host-run Jeopardy. The host picks one of the four boards (from `public/banks/jeopardy.js`) on the setup screen when choosing the game; it can be changed in the lobby. |
 | **Globe Trotters** | **Live, like Kahoot/GeoGuessr.** Players join on their phones with the code and a name. The host clicks *Start* / *Next Round*, the place goes out to every phone at once, and everyone drops a pin before the timer runs out. Score = `round(5000 * exp(-max(0, dist_km - radius_km) / 1500))`. The round ends early when everyone has locked in. |
 | **Spot the Fake** | Two truths and a lie. Host taps who spotted it. |
 | **Crowd Control** | Would-you-rather and Most Likely To. |
@@ -28,8 +28,8 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 
 ## Globe Trotters banks
 - `public/banks/globetrotters_bank.csv` — the places (answers never leave the server until the reveal). Edit it, push to `main`, and it goes live after the automatic deploy.
-- Photos: run `cd public/banks` then `python fetch_images.py` (edit the email in the User-Agent first). It writes `public/banks/globetrotters_images.csv`, which the server uses automatically after the next deploy. Check the photos, and to override one, put your own file in `public/img/` and write its filename in the `image_file` column.
-- With no photos, players see the place name and category instead. In the lobby, *Hide the name* makes a place photo-only.
+- **Photos are required.** Globe Trotters is photo-only: players only ever see a picture of the place (never its name), so a place without a photo is not used, and with no photos at all the game can't start. To add them: install Python, run `pip install requests`, open `public/banks/fetch_images.py` and put your email in the `User-Agent` line, then in a terminal run `cd public/banks` and `python fetch_images.py` (needs internet). It writes `public/banks/globetrotters_images.csv`. **Check the pictures** (the top Wikipedia hit isn't always the right one; delete bad rows), commit the file, and it goes live after the automatic deploy. To use your own picture for a place, put the file in `public/img/` and write its filename in the `image_file` column of the places file.
+- The lobby tells the host how many places have photos (for example "📷 80 of 100 places have photos"). Only those places are used.
 
 ## Other banks
 `public/banks/jeopardy.js`, `public/banks/spotthefake.js`, `public/banks/crowdcontrol.js` — formats are documented at the top of each file.
