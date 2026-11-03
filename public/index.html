@@ -605,7 +605,8 @@ const GT={
       $('#view').innerHTML=`<div id="gtg" class="clue" style="max-width:1150px"><div class="qhead"><span>ROUND ${s.idx+1} / ${s.total}</span><span id="gtlk"></span></div>
         ${p.image?`<img class="gtimg" src="${esc(p.image)}" alt="" onerror="this.remove()">`:''}
         <div class="note" style="font-size:18px">${esc(p.category.toUpperCase())}</div>
-        <div class="ddbanner" style="font-size:clamp(30px,5.5vw,80px);letter-spacing:2px;animation:none">${p.name?esc(p.name):'WHERE IN THE WORLD?'}</div>
+        <div class="ddbanner" style="font-size:clamp(30px,5.5vw,80px);letter-spacing:2px;animation:none">${p.name?esc(p.name):'WHAT IS THIS PLACE?'}</div>
+        <div class="sub" style="font-size:18px">Pick the name on your phone <b>and</b> drop a pin</div>
         ${T.html(s.settings.seconds)}<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="gt-reveal">Reveal now</button></div></div>`;
       clearInterval(GT.iv);let last=null;
       GT.iv=setInterval(()=>{
@@ -626,9 +627,9 @@ const GT={
     const a=s.answer,fk=d=>d==null?'no guess':(d<10?d.toFixed(1):Math.round(d).toLocaleString())+' km';
     $('#view').innerHTML=`<div id="gtr"><div class="qhead" style="max-width:none"><span>ROUND ${s.idx+1} / ${s.total}</span><span>${esc(a.name.toUpperCase())} · ${esc(a.country.toUpperCase())}</span></div>
       <div class="gtrev"><div id="gtmap"></div>
-      <div class="gtlist"><div class="note" style="font-size:16px;text-align:left">${esc(a.blurb||'')}${a.credit?`<br><small style="color:var(--mute)">Photo: ${esc(a.credit)}</small>`:''}</div>
+      <div class="gtlist"><div class="note" style="font-size:16px;text-align:left;color:var(--good)">${s.results.filter(r=>r.correct).length} of ${s.results.length} knew it · ✅ knew what it is (+2,500) · 📍 pin (up to +2,500)</div><div class="note" style="font-size:16px;text-align:left">${esc(a.blurb||'')}${a.credit?`<br><small style="color:var(--mute)">Photo: ${esc(a.credit)}</small>`:''}</div>
       ${s.teams?s.teams.slice().sort((x,y)=>y.score-x.score).map((t,i)=>`<div class="rrow" style="--c:${t.color}"><b>${i+1}</b><span>Team ${esc(t.name)}</span><em>${t.score.toLocaleString()} total</em><strong>+${t.last.toLocaleString()}</strong></div>`).join('')+'<div class="lbl sm" style="margin:6px 0 0">Players</div>':''}
-      ${s.results.slice().sort((x,y)=>y.pts-x.pts).map((r,i)=>`<div class="rrow" style="--c:${r.color}"><b>${i+1}</b><span>${esc(r.name)}</span><em>${fk(r.dist)}</em><strong>+${r.pts.toLocaleString()}</strong></div>`).join('')}</div></div>
+      ${s.results.slice().sort((x,y)=>y.pts-x.pts).map((r,i)=>`<div class="rrow" style="--c:${r.color}"><b>${i+1}</b><span>${esc(r.name)} ${r.correct?'✅':'❌'}</span><em>${fk(r.dist)}</em><strong>+${r.pts.toLocaleString()}</strong></div>`).join('')}</div></div>
       <div class="row"><button class="btn good" data-act="gt-next">${s.idx+1>=s.total?'Final Scores':'Next Round ▸'}</button></div></div>`;
     if(typeof L==='undefined'){$('#gtmap').innerHTML='<p class="sub">Map needs internet.</p>';return;}
     const m=GT.map=L.map('gtmap',{worldCopyJump:true,minZoom:1,attributionControl:false}).setView([20,10],2);

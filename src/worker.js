@@ -4,8 +4,7 @@
 //   Auth  (Durable Object, one)   the host account (scrypt-hashed password), login sessions, rate limiting, the active game code
 //   Game  (Durable Object, per game code)  one live game: players, rounds, scores, teams, live updates (Server-Sent Events)
 //
-// Globe Trotters scoring (do not change without asking):
-//   score = round(5000 * exp(-max(0, dist_km - radius_km) / 1500))
+// Globe Trotters scoring: see NAME_PTS / pinScore below (owner-specified: ~half for knowing what it is, half for the pin)
 import { DurableObject } from 'cloudflare:workers';
 import { scryptSync, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import bankCsv from '../public/banks/globetrotters_bank.csv';
@@ -70,7 +69,19 @@ function haversine(lat1, lon1, lat2, lon2) {
   const x = Math.sin(dl / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dg / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x)));
 }
-const score = (dist, radius) => Math.round(5000 * Math.exp(-Math.max(0, dist - radius) / 1500));
+// Scoring (owner-specified, do not change without asking). A round is worth up to 5,000:
+//   knowing WHAT the place is (pick the right name out of 4)   = 2,500
+//   the pin, GeoGuessr-style  = round(2500 * exp(-max(0, dist_km - radius_km) / 1500))
+const NAME_PTS = 2500, PIN_PTS = 2500;
+const pinScore = (dist, radius) => Math.round(PIN_PTS * Math.exp(-Math.max(0, dist - radius) / 1500));
+// 4 name choices for a round: the right one plus 3 other places, preferring the same kind of place (then the same continent) so it isn't trivial.
+function buildOptions(pl) {
+  const seen = new Set([pl.name]), wrong = [];
+  const others = PLACES.filter(x => x.name !== pl.name);
+  const tiers = [others.filter(x => x.category === pl.category), others.filter(x => x.category !== pl.category && x.continent === pl.continent), others.filter(x => x.category !== pl.category && x.continent !== pl.continent)];
+  for (const tier of tiers) for (const x of shuffle(tier)) { if (wrong.length < 3 && !seen.has(x.name)) { seen.add(x.name); wrong.push(x.name); } }
+  return shuffle([pl.name, ...wrong]);
+}
 const GAMES = ['jeopardy', 'globetrotters', 'spotthefake', 'crowdcontrol']; // the game a code is for is chosen by the host before opening the lobby
 const TEAM_DEFS = [
   { name: 'Red', color: '#ff4d5e' }, { name: 'Blue', color: '#4f7bff' }, { name: 'Green', color: '#2fd573' },
@@ -205,7 +216,7 @@ export class Game extends DurableObject {
     return this.players().map(p => ({ id: p.id, name: p.name, color: p.color, score: p.score, locked: p.locked, connected: this.connCount(p.id) > 0, team: p.team }));
   }
   promptOf(pl) { // photo only: the name is the answer, so it is never part of what players or the host screen get while guessing
-    return { category: pl.category, name: null, image: pl.img ? pl.img.url : null };
+    return { category: pl.category, name: null, image: pl.img ? pl.img.url : null, options: this.r.opts ? this.r.opts[this.r.idx] : [] };
   }
   // Teams: team score = sum of its members' scores. Assignment is random (round-robin over a shuffle); the host can move people in the lobby.
   assignTeams() {
@@ -241,7 +252,7 @@ export class Game extends DurableObject {
       const p = r.players[pid];
       if (p) {
         const order = this.ranked(), rank = order.findIndex(x => x.id === p.id) + 1;
-        v.me = { id: p.id, name: p.name, color: p.color, team: p.team, score: p.score, locked: p.locked, guess: p.guess, last: p.last, rank, of: order.length };
+        v.me = { id: p.id, name: p.name, color: p.color, team: p.team, score: p.score, locked: p.locked, guess: p.guess, choice: p.choice == null ? null : p.choice, last: p.last, rank, of: order.length };
       }
     }
     return v;
@@ -279,7 +290,7 @@ export class Game extends DurableObject {
     if (r.idx >= r.rounds.length) { r.phase = 'end'; r.deadline = 0; return this.broadcast(); }
     r.phase = 'guess';
     r.deadline = Date.now() + r.settings.seconds * 1000;
-    for (const p of this.players()) { p.guess = null; p.locked = false; p.last = null; }
+    for (const p of this.players()) { p.guess = null; p.choice = null; p.locked = false; p.last = null; }
     r.results = null;
     await this.ctx.storage.setAlarm(r.deadline + 300); // round timer: the alarm ends the round if nobody does
     this.broadcast();
@@ -287,12 +298,15 @@ export class Game extends DurableObject {
   endRound() {
     const r = this.r;
     if (!r || r.phase !== 'guess') return;
-    const pl = this.cur();
+    const pl = this.cur(), opts = r.opts[r.idx], right = opts.indexOf(pl.name);
     for (const p of this.players()) {
-      if (p.guess) { const d = haversine(p.guess.lat, p.guess.lon, pl.lat, pl.lon); const pts = score(d, pl.radius); p.score += pts; p.last = { dist: d, pts }; }
-      else p.last = { dist: null, pts: 0 };
+      let dist = null, pinPts = 0;
+      if (p.guess) { dist = haversine(p.guess.lat, p.guess.lon, pl.lat, pl.lon); pinPts = pinScore(dist, pl.radius); }
+      const picked = p.choice != null ? opts[p.choice] : null, namePts = p.choice != null && p.choice === right ? NAME_PTS : 0;
+      const pts = pinPts + namePts; p.score += pts;
+      p.last = { dist, pts, pinPts, namePts, correct: namePts > 0, picked };
     }
-    r.results = this.ranked().map(p => ({ id: p.id, name: p.name, color: p.color, lat: p.guess ? p.guess.lat : null, lon: p.guess ? p.guess.lon : null, dist: p.last.dist, pts: p.last.pts, total: p.score }));
+    r.results = this.ranked().map(p => ({ id: p.id, name: p.name, color: p.color, lat: p.guess ? p.guess.lat : null, lon: p.guess ? p.guess.lon : null, dist: p.last.dist, pts: p.last.pts, pinPts: p.last.pinPts, namePts: p.last.namePts, correct: p.last.correct, picked: p.last.picked, total: p.score }));
     r.phase = 'reveal'; r.deadline = 0;
     this.broadcast();
   }
@@ -333,7 +347,7 @@ export class Game extends DurableObject {
       const taken = new Set(this.players().map(p => p.name.toLowerCase()));
       let n = name0, k = 2; while (taken.has(n.toLowerCase())) n = name0.slice(0, 12) + ' ' + k++;
       const id = String(this.players().length), token = crypto.randomUUID();
-      r.players[id] = { id, token, name: n, color: colorOf(this.players().length), score: 0, guess: null, locked: false, last: null, team: null };
+      r.players[id] = { id, token, name: n, color: colorOf(this.players().length), score: 0, guess: null, choice: null, locked: false, last: null, team: null };
       if (r.settings.teams) r.players[id].team = this.smallestTeam();
       this.broadcast();
       return json({ pid: id, token, name: n, code: r.code });
@@ -342,9 +356,13 @@ export class Game extends DurableObject {
       const p = r.players[String(b.pid)];
       if (!p || p.token !== b.token) return json({ error: 'bad player' }, 403);
       if (r.phase !== 'guess' || p.locked) return json({ ok: false });
-      const lat = +b.lat, lon = +b.lon;
-      if (!isFinite(lat) || !isFinite(lon)) return json({ error: 'bad pin' }, 400);
-      p.guess = { lat: clamp(lat, -90, 90), lon: ((lon + 540) % 360) - 180 };
+      // a guess has two parts, each optional: which name they picked (0-3) and where they put the pin
+      if (b.choice !== undefined && b.choice !== null) { const c = Math.round(+b.choice); if (Number.isInteger(c) && c >= 0 && c < 4) p.choice = c; else return json({ error: 'bad choice' }, 400); }
+      if (b.lat !== undefined && b.lat !== null || b.lon !== undefined && b.lon !== null) {
+        const lat = +b.lat, lon = +b.lon;
+        if (!isFinite(lat) || !isFinite(lon)) return json({ error: 'bad pin' }, 400);
+        p.guess = { lat: clamp(lat, -90, 90), lon: ((lon + 540) % 360) - 180 };
+      }
       if (b.lock) { p.locked = true; this.broadcast(); this.maybeEarlyEnd(); }
       return json({ ok: true });
     }
@@ -370,14 +388,14 @@ export class Game extends DurableObject {
         if (!this.players().length) return json({ error: 'No players yet.' }, 400);
         const pool = s.category === 'All' ? PHOTO_PLACES : PHOTO_PLACES.filter(p => p.category === s.category);
         if (!pool.length) return json({ error: PHOTO_PLACES.length ? 'No places with photos in that category.' : 'No place photos have been added yet. Globe Trotters is photo-only, so run fetch_images.py and deploy (see the README).' }, 400);
-        r.rounds = shuffle(pool).slice(0, s.rounds); r.idx = -1;
+        r.rounds = shuffle(pool).slice(0, s.rounds); r.opts = r.rounds.map(buildOptions); r.idx = -1;
         await this.startRound(); return json({ ok: true });
       }
       if (a === 'reveal') { this.endRound(); return json({ ok: true }); }
       if (a === 'next' && r.phase === 'reveal') { await this.startRound(); return json({ ok: true }); }
       if (a === 'again') { // back to the lobby from any phase (also used when the host leaves a game mid-round)
         r.phase = 'lobby'; r.idx = -1; r.rounds = []; r.results = null; r.deadline = 0;
-        for (const p of this.players()) { p.score = 0; p.guess = null; p.locked = false; p.last = null; }
+        for (const p of this.players()) { p.score = 0; p.guess = null; p.choice = null; p.locked = false; p.last = null; }
         this.broadcast(); return json({ ok: true });
       }
       return json({ error: 'not now' }, 400);

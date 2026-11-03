@@ -18,7 +18,7 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 | Game | How it plays |
 |---|---|
 | **The Big Board** | Host-run Jeopardy. The host picks one of the four boards (from `public/banks/jeopardy.js`) on the setup screen when choosing the game; it can be changed in the lobby. |
-| **Globe Trotters** | **Live, like Kahoot/GeoGuessr.** Players join on their phones with the code and a name. The host clicks *Start* / *Next Round*, the place goes out to every phone at once, and everyone drops a pin before the timer runs out. Score = `round(5000 * exp(-max(0, dist_km - radius_km) / 1500))`. The round ends early when everyone has locked in. |
+| **Globe Trotters** | **Live, like Kahoot/GeoGuessr.** Players join on their phones with the code and a name. The host clicks *Start* / *Next Round*, the place goes out to every phone at once, and everyone picks which of 4 names the place is **and** drops a pin before the timer runs out. Up to **5,000 a round**: 2,500 for picking the right name, plus up to 2,500 for the pin, `round(2500 * exp(-max(0, dist_km - radius_km) / 1500))`. The round ends early when everyone has locked in. |
 | **Spot the Fake** | Two truths and a lie. Host taps who spotted it. |
 | **Crowd Control** | Would-you-rather and Most Likely To. |
 
