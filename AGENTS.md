@@ -217,7 +217,7 @@ Tips: `wrangler dev` rewrites the request's host name to the route in `wrangler.
 - Host resume after a page refresh or re-login (a refresh still creates a new room; the old game's code stops working).
 - Move the Auth/Game data to a nicer admin view, rate-limit joins, scheduled cleanup of old game objects (finished games are replaced, not deleted, until the next game starts).
 - Change-password screen, and more than one host account (invite).
-- **Run `fetch_images.py`, review the photos and commit `globetrotters_images.csv`: required before Globe Trotters can be played** (it is photo-only). This sandbox cannot reach Wikipedia, so it has to be run on a machine with internet.
+- Review the Globe Trotters photos (about 18 matched a differently titled Wikipedia article, see §6) and find a photo for #72 Sossusvlei Dunes. Photos can only be fetched on a machine with internet (this sandbox cannot reach Wikipedia).
 - Optional speed bonus (Kahoot-style) in `endRound` scoring.
 - QR code for the join address in the Globe Trotters lobby.
 - Let phones also join Spot the Fake / Crowd Control (currently host-run).
