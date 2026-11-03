@@ -96,12 +96,12 @@ $('#joinbtn').onclick=async()=>{
   if(!r){$('#err').textContent='Can\'t reach the game. Are you on the same Wi-Fi?';return;}
   const j=await r.json();
   if(!r.ok){$('#err').textContent=j.error;return;}
-  me={pid:j.pid,token:j.token,name:j.name};try{localStorage.setItem('gt.me',JSON.stringify(me));}catch(e){}
+  me={pid:j.pid,token:j.token,name:j.name,code:j.code};try{localStorage.setItem('gt.me',JSON.stringify(me));}catch(e){}
   connect();
 };
 function connect(){
   if(es)es.close();
-  es=new EventSource(`/api/events?role=player&pid=${me.pid}&token=${me.token}`);
+  es=new EventSource(`/api/events?role=player&code=${encodeURIComponent(me.code||'')}&pid=${me.pid}&token=${me.token}`);
   es.onmessage=e=>{st=JSON.parse(e.data);off=st.now-Date.now();render();};
 }
 
@@ -113,7 +113,7 @@ function ensureMap(){
   map.on('click',e=>{
     if(!st||st.phase!=='guess'||(st.me&&st.me.locked))return;
     setPin(e.latlng.lat,e.latlng.lng);
-    fetch('/api/guess',{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:e.latlng.lat,lon:e.latlng.lng})});
+    fetch('/api/guess?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:e.latlng.lat,lon:e.latlng.lng})});
   });
 }
 const dotIcon=c=>L.divIcon({className:'',html:`<div class="dot" style="background:${c}"></div>`,iconSize:[14,14],iconAnchor:[7,7]});
@@ -131,7 +131,7 @@ function renderFoot(){
       :`<button class="btn good" id="lock" ${pin?'':'disabled'}>${pin?'Lock in guess':'Tap the map to drop a pin'}</button>`;
     const b=$('#lock');if(b)b.onclick=()=>{
       b.disabled=true;
-      fetch('/api/guess',{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:pin.lat,lon:pin.lon,lock:true})});
+      fetch('/api/guess?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,lat:pin.lat,lon:pin.lon,lock:true})});
     };
   }
 }

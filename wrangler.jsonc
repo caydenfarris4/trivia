@@ -1,0 +1,34 @@
+{
+  // Game Night Live on Cloudflare Workers. Deploy: `npx wrangler deploy` (Workers Builds runs this on every push to main).
+  "name": "trivia",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The site's own address. Remove this block if you attach the domain in the dashboard instead.
+  "routes": [{ "pattern": "trivia.caydenfarris.net", "custom_domain": true }],
+
+  // Static pages. run_worker_first = every request goes through the Worker, so the host app and the
+  // question banks (which contain the answers) can be locked behind the host login.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "html_handling": "none",
+    "not_found_handling": "none"
+  },
+
+  // The Globe Trotters places (they contain the answers) are bundled into the Worker as text and never served.
+  "rules": [{ "type": "Text", "globs": ["**/*.csv"], "fallthrough": true }],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "AUTH", "class_name": "Auth" },
+      { "name": "GAME", "class_name": "Game" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Auth", "Game"] }],
+
+  // Optional secret: SETUP_CODE (run `npx wrangler secret put SETUP_CODE`). If set, creating the first host account needs it.
+  "observability": { "enabled": true }
+}
