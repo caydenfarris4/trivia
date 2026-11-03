@@ -468,7 +468,7 @@ const GT={
     GT.st=null;GT.key='';GT.shown=false;
   },
   post(path,body){
-    return fetch(path,{method:'POST',headers:{'content-type':'application/json','x-token':GT.tok},body:JSON.stringify(body||{})}).catch(()=>{});
+    return fetch(path+'?code='+encodeURIComponent(GT.info.code),{method:'POST',headers:{'content-type':'application/json','x-token':GT.tok},body:JSON.stringify(body||{})}).catch(()=>{});
   },
   async start(){
     GT.stop();Snd.stop();S.screen='gt';G={g:'gt',id:'globetrotters',lp:[]};renderBoard();
@@ -476,14 +476,14 @@ const GT={
     try{const r=await fetch('/api/host/new',{method:'POST'});if(r.status===401){location.href='/login';return;}if(!r.ok)throw new Error(r.status);j=await r.json();}
     catch(e){
       $('#view').innerHTML=`<div class="panel" style="text-align:center"><h2 style="color:var(--gold);font-family:Impact,sans-serif;letter-spacing:2px;font-size:34px">START THE GAME SERVER</h2>
-      <p class="sub">Globe Trotters is live: players join on their phones, so it needs the little game server running.</p>
-      <p class="sub">Double-click <b>start.bat</b> in this folder (or run <code>node server.js</code>), then open <b>http://localhost:3000/host</b> and log in.</p>
+      <p class="sub">Globe Trotters is live: players join on their phones, so it needs the game server.</p>
+      <p class="sub">Open the site's <b>/host</b> page (your web address, or run <code>npm run dev</code> and open <b>http://localhost:3000/host</b>) and log in.</p>
       <div class="row"><button class="btn alt" data-act="home">Back to menu</button></div></div>`;
       return;
     }
     GT.tok=j.token;GT.info=j;
     if(roster.teams)GT.post('/api/host/settings',{teams:roster.teams});
-    GT.es=new EventSource('/api/events?role=host&token='+encodeURIComponent(j.token));
+    GT.es=new EventSource('/api/events?role=host&code='+encodeURIComponent(j.code)+'&token='+encodeURIComponent(j.token));
     GT.es.onmessage=e=>{GT.st=JSON.parse(e.data);GT.off=GT.st.now-Date.now();G.lp=GT.st.players;GT.render();};
   },
   again(){S.screen='gt';GT.shown=false;GT.key='';GT.post('/api/host/again');},
@@ -502,10 +502,10 @@ const GT={
     if(GT.key!=='lobby'||!$('#gtl')){
       GT.key='lobby';clearInterval(GT.iv);if(GT.map){GT.map.remove();GT.map=null;}Snd.loop('lobby');
       const sel=(k,vals,cur,fmtf=v=>v)=>`<select data-chg="gt-set" data-k="${k}">${vals.map(v=>`<option value="${esc(v)}"${String(v)===String(cur)?' selected':''}>${esc(fmtf(v))}</option>`).join('')}</select>`;
-      const urls=(s.urls&&s.urls.length?s.urls:[location.origin]);
+      const urls=[location.origin]; // the address the host is using is the one the players should use
       $('#view').innerHTML=`<div id="gtl" class="clue" style="max-width:1150px">
         <h1 class="logo" style="font-size:clamp(34px,5vw,70px)">GLOBE TROTTERS</h1>
-        <div class="joinbox"><div><div class="lbl">On your phone, go to</div><div class="joinurl">${urls.map(u=>esc(u.replace(/^https?:\/\//,''))).join('<br>')}</div></div>
+        <div class="joinbox"><div><div class="lbl">On your phone, go to</div><div class="joinurl">${urls.map(u=>esc(u.replace(/^https?:\/\//,''))).join('<br>')}</div>${/^(localhost|127\.|\[::1\])/.test(location.hostname)?'<div class="sub" style="font-size:13px;max-width:420px">Phones can\'t reach "localhost". Open this host page using your computer\'s Wi-Fi address (shown in the black window) so the right address appears here.</div>':''}</div>
         <div><div class="lbl">Game code</div><div class="code">${esc(s.code)}</div></div></div>
         <div class="settings">
           <label>Rounds ${sel('rounds',[5,8,10,15,20],set.rounds)}</label>
