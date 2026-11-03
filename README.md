@@ -4,8 +4,9 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 
 ## Play it (the live site)
 1. **Host:** go to `https://trivia.caydenfarris.net/host` (it sends you to the login). The very first time, the login page asks you to **create your host account** (username + password). That account becomes the host and sign-up then closes. After that you just log in.
-2. **Players:** go to `https://trivia.caydenfarris.net/`, type the 4-digit game code shown on the host screen and a name. No account needed.
-3. Forgot the host password? In Cloudflare: the `trivia` Worker → Settings → Variables and Secrets → add a secret named `RESET_HOST` with any new value. The next visit to the site wipes the host account, and you can create a new one.
+2. **Pick the game and open the lobby:** on the host page choose which game you're playing, how many players can join and (optionally) how many teams, then press *Open the lobby*. You get a random 4-digit code **for that game**. There are no names to type.
+3. **Players:** go to `https://trivia.caydenfarris.net/`, type the code and their own name. Their phone shows which game it is, and their name pops up on your big screen. Press *Start* when everyone's in. (To play a different game, make a new game night: *⟲ New game night* in the lobby.)
+4. Forgot the host password? In Cloudflare: the `trivia` Worker → Settings → Variables and Secrets → add a secret named `RESET_HOST` with any new value. The next visit to the site wipes the host account, and you can create a new one.
 
 ## Deploying / changing it
 - Every push to `main` is built and deployed by Cloudflare automatically (Workers Builds runs `npx wrangler deploy`).
@@ -23,7 +24,7 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 
 ## Host account and teams
 - Only the host has an account. The site's front page is the normal player screen; the host uses **Host login**.
-- **Teams (all four games):** pick 2–6 teams on the setup screen (or in the Globe Trotters lobby). Players are split randomly, the host can move people or shuffle, and a team's score is the sum of its members.
+- **Teams (all four games):** pick 2–6 teams on the setup screen. Players are split randomly as they join, the host can move people or shuffle in the lobby, and a team's score is the sum of its members.
 
 ## Globe Trotters banks
 - `public/banks/globetrotters_bank.csv` — the places (answers never leave the server until the reveal). Edit it, push to `main`, and it goes live after the automatic deploy.

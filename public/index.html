@@ -155,6 +155,13 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 .rest div{display:flex;justify-content:space-between;background:rgba(255,255,255,.08);border-radius:8px;padding:6px 12px}
 .cf{position:fixed;top:-20px;width:10px;height:16px;z-index:50;animation:fall linear forwards;pointer-events:none}
 @keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+/* lobby */
+.pc.pop{animation:pop .45s}
+.card.sm{padding:14px;border-width:3px}.card.sm .ic{font-size:40px}.card.sm h2{font-size:22px}.card.sm p{min-height:0;font-size:14px;margin:2px 0 0}
+.card.picked{transform:translateY(-4px);box-shadow:0 0 0 4px var(--a),0 10px 36px var(--a);background:linear-gradient(160deg,rgba(255,255,255,.28),rgba(0,0,40,.7))}
+.gamebadge{font-family:Impact,sans-serif;letter-spacing:3px;color:var(--a,#fff);font-size:clamp(26px,4vw,52px)}
+.lobbywrap{max-width:1150px;margin:0 auto;text-align:center}
+.hint{color:var(--mute);font-size:14px;margin:4px auto;max-width:520px}
 /* teams */
 .trow{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
 .chip.tchip{flex:1;min-width:120px;background:var(--c);color:#000;font-size:15px}
@@ -173,8 +180,7 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 <div id="app">
   <div id="top">
     <div class="brand">GAME NIGHT <i>LIVE</i></div>
-    <button class="ib" data-act="players" title="Edit players">👥 Players</button>
-    <button class="ib" data-act="home" title="Back to game menu">🏠 Menu</button>
+    <button class="ib" data-act="home" title="Back to the lobby">🏠 Lobby</button>
     <button class="ib" data-act="mute" id="mutebtn" title="Sound on/off">🔊</button>
     <button class="ib" data-act="logout" id="logoutbtn" title="Log out of the host account" hidden>🔒 Log out</button>
   </div>
@@ -287,30 +293,87 @@ const T={id:null,
 
 /* ================= players / roster ================= */
 let players=[],G=null,lastGame=null,S={screen:'setup'};
-let roster={n:8,names:[],teams:0};
-try{const r=JSON.parse(localStorage.getItem('gn.roster')||'null');if(r&&r.n)roster=r;}catch(e){}
+let roster={n:8,teams:0,game:'globetrotters'}; // setup choices only: how many may join, how many teams, which game. Names come from the players' phones.
+try{const r=JSON.parse(localStorage.getItem('gn.roster')||'null');if(r&&r.n)roster={n:r.n,teams:r.teams||0,game:r.game||'globetrotters'};}catch(e){}
 const saveRoster=()=>{try{localStorage.setItem('gn.roster',JSON.stringify(roster));}catch(e){}};
-function makePlayers(){
-  players=Array.from({length:roster.n},(_,i)=>({id:i,name:(roster.names[i]||'').trim()||`Player ${i+1}`,color:colorOf(i),score:0,out:false,streak:0,team:null}));
-  assignRosterTeams();
+
+/* ================= the live room: players join on their phones with the game code ================= */
+// The room is created when the host opens the lobby and stays open for the whole game night. Every game uses the players
+// who joined it. Globe Trotters is played on the phones; the other three are host-run (the host taps names on this screen).
+const ROOM={
+  es:null,st:null,off:0,tok:null,code:null,
+  save(){try{localStorage.setItem('gn.room',JSON.stringify({code:ROOM.code,token:ROOM.tok}));}catch(e){}},
+  forget(){try{localStorage.removeItem('gn.room');}catch(e){}},
+  post(path,body){
+    return fetch(path+'?code='+encodeURIComponent(ROOM.code),{method:'POST',headers:{'content-type':'application/json','x-token':ROOM.tok},body:JSON.stringify(body||{})}).catch(()=>{});
+  },
+  leave(){ // forget this room (the server closes it when a new one is made)
+    if(ROOM.es){ROOM.es.close();ROOM.es=null;}
+    ROOM.st=null;ROOM.tok=null;ROOM.code=null;ROOM.forget();
+  },
+  connect(onFirst){
+    const es=ROOM.es=new EventSource('/api/events?role=host&code='+encodeURIComponent(ROOM.code)+'&token='+encodeURIComponent(ROOM.tok));
+    let first=true;const fin=ok=>{if(first){first=false;onFirst&&onFirst(ok);}};
+    es.onmessage=e=>{
+      const s=JSON.parse(e.data);
+      if(s.phase==='closed'){ROOM.leave();fin(false);return;}
+      ROOM.st=s;ROOM.off=s.now-Date.now();fin(true);ROOM.changed();
+    };
+    es.onerror=()=>{
+      if(first){if(es.readyState===EventSource.CLOSED){ROOM.leave();fin(false);}return;} // resume refused: that game is over
+      // an established stream dropped for good (a browser refresh also fires this): never forget the room, just reconnect
+      if(es.readyState===EventSource.CLOSED&&ROOM.es===es)setTimeout(()=>{if(ROOM.es===es&&ROOM.code)ROOM.connect();},2000);
+    };
+  },
+  async create(max,teams,game){
+    const r=await fetch('/api/host/new',{method:'POST'});
+    if(r.status===401){location.href='/login';return false;}
+    if(!r.ok)throw new Error(r.status);
+    const j=await r.json();ROOM.tok=j.token;ROOM.code=j.code;ROOM.save();
+    await ROOM.post('/api/host/settings',{max,teams,game});
+    await new Promise(res=>ROOM.connect(res));
+    return !!ROOM.st;
+  },
+  resume(){ // after a page refresh, pick the same game back up
+    return new Promise(res=>{
+      let saved=null;try{saved=JSON.parse(localStorage.getItem('gn.room')||'null');}catch(e){}
+      if(!saved||!saved.code||!saved.token)return res(false);
+      ROOM.code=saved.code;ROOM.tok=saved.token;
+      const t=setTimeout(()=>{if(!ROOM.st){ROOM.leave();res(false);}},4000);
+      ROOM.connect(ok=>{clearTimeout(t);res(ok);});
+    });
+  },
+  changed(){ // a fresh snapshot arrived: refresh whatever screen is showing
+    const s=ROOM.st;
+    if(s.settings.game==='globetrotters'&&s.phase!=='lobby'&&!(G&&G.g==='gt')){GT.begin();return;} // the host pressed Start (or refreshed mid-game)
+    if(G&&G.g==='gt'){G.lp=s.players;GT.render();return;}
+    if(S.screen==='lobby')LOBBY.draw();
+  },
+};
+function syncPlayers(){ // host-run games use the players who have joined so far (scores start at 0)
+  const s=ROOM.st;
+  players=(s?s.players:[]).map(p=>({id:+p.id,name:p.name,color:p.color,score:0,out:false,streak:0,team:p.team}));
 }
-/* ---- teams: team score = sum of its members' scores ---- */
-const TEAM_DEFS=[{name:'Red',color:'#ff4d5e'},{name:'Blue',color:'#4f7bff'},{name:'Green',color:'#2fd573'},{name:'Gold',color:'#ffcf3a'},{name:'Purple',color:'#b46bff'},{name:'Orange',color:'#ff9d1c'}];
-function assignRosterTeams(){
-  const n=roster.teams||0;
-  shuffle(players).forEach((p,i)=>{p.team=n?i%n:null;});
-}
+/* ---- teams: team score = sum of its members' scores (teams are assigned by the server) ---- */
 function teamTotals(){ // null when playing solo
-  if(G&&G.g==='gt')return GT.st&&GT.st.teams||null;
-  if(!roster.teams)return null;
-  return TEAM_DEFS.slice(0,roster.teams).map((t,i)=>({id:i,name:t.name,color:t.color,score:players.filter(p=>p.team===i).reduce((a,p)=>a+p.score,0)}));
+  const t=ROOM.st&&ROOM.st.teams;
+  if(!t)return null;
+  if(G&&G.g==='gt')return t;
+  return t.map(x=>({id:x.id,name:x.name,color:x.color,score:players.filter(p=>p.team===x.id).reduce((a,p)=>a+p.score,0)}));
 }
 function teamBoxes(teams,list,act){
   return`<div class="tgrid">${teams.map(t=>{const m=list.filter(p=>p.team===t.id);
     return`<div class="tbox" style="--c:${t.color}"><div class="th">${esc(t.name)} <small>${m.length}</small></div>${m.map(p=>`<button class="tm${p.connected===false?' off':''}" data-act="${act}" data-id="${p.id}">${esc(p.name)}</button>`).join('')}</div>`;}).join('')}</div>`;
 }
-const teamPanel=()=>roster.teams?`<div class="lbl">Teams · tap a player to move them to the next team</div>${teamBoxes(TEAM_DEFS.slice(0,roster.teams).map((t,i)=>({id:i,...t})),players,'team-move')}<div class="row" style="margin-top:6px"><button class="btn sm alt" data-act="team-shuffle">🔀 Shuffle teams</button></div>`:'';
+const teamPanel=()=>{const s=ROOM.st;return s&&s.teams?`<div class="lbl">Teams · tap a player to move them to the next team</div>${teamBoxes(s.teams,s.players,'gt-move')}<div class="row" style="margin-top:6px"><button class="btn sm alt" data-act="gt-shuffle">🔀 Shuffle teams</button></div>`:'';};
 const resetScores=()=>players.forEach(p=>{p.score=0;p.out=false;p.streak=0;});
+function leaveGame(){ // leaving a Globe Trotters game (even mid-round): put the room back to its lobby state
+  if(G&&G.g==='gt'&&ROOM.st&&ROOM.st.phase!=='lobby')ROOM.post('/api/host/again');
+}
+function startGame(id){ // host-run games use whoever has joined so far
+  lastGame=id;if(id!=='globetrotters')syncPlayers();
+  GAMES.find(g=>g.id===id).start();
+}
 const inGame=()=>/^(jp|gt|sf|cc)/.test(S.screen)||S.screen==='results';
 
 function renderBoard(){
@@ -320,7 +383,7 @@ function renderBoard(){
   const list=G.lp||players,tt=teamTotals(),sv=n=>G.g==='jp'?money(n):fmt(n);
   const trow=tt?`<div class="trow">${tt.map(t=>`<div class="chip tchip" style="--c:${t.color}"><b>${esc(t.name)}</b><span>${sv(t.score)}</span></div>`).join('')}</div>`:'';
   el.innerHTML=trow+list.map(p=>{
-    const val=(G.g==='gt'&&p.locked&&GT.st&&GT.st.phase==='guess'?'✅ ':'')+sv(p.score);
+    const val=(G.g==='gt'&&p.locked&&ROOM.st&&ROOM.st.phase==='guess'?'✅ ':'')+sv(p.score);
     const td=tt&&p.team!=null&&tt[p.team]?`<i class="td" style="background:${tt[p.team].color}"></i>`:'';
     return`<div class="chip${p.out||p.connected===false?' out':''}${G.g==='jp'&&G.turn===p.id?' turn':''}" style="--c:${p.color}">${td}<b>${esc(p.name)}</b><span>${val}</span></div>`;
   }).join('');
@@ -349,50 +412,86 @@ function finish(title){
     :`<div class="podium">${slot(r[1],1,230,'🥈')}${slot(r[0],0,300,'🥇')}${slot(r[2],2,180,'🥉')}</div>
     <div class="rest">${r.slice(3).map((p,i)=>`<div><span>${i+4}. ${esc(p.name)}</span><b>${val(p)}</b></div>`).join('')}</div>`;
   $('#view').innerHTML=`<div class="clue"><div class="ddbanner" style="font-size:clamp(34px,6vw,80px)">${esc(title)}</div>${body}
-    <div class="row"><button class="btn good" data-act="replay">Play Again</button><button class="btn alt" data-act="home">Game Menu</button></div></div>`;
+    <div class="row"><button class="btn good" data-act="replay">Play Again</button><button class="btn alt" data-act="home">Back to Lobby</button></div></div>`;
   renderBoard();confetti();Snd.play('win');
 }
 
 /* ================= screens: setup + hub ================= */
-function viewSetup(){
+function viewSetup(msg){
   GT.stop();S.screen='setup';G=null;T.stop();Snd.stop();renderBoard();
   $('#view').innerHTML=`<h1 class="logo">GAME NIGHT<span>LIVE</span></h1>
-  <div class="panel"><div class="lbl">How many players?</div>
+  <div class="panel"><div class="lbl">1 · Which game are we playing?</div>
+  <div class="cards" style="margin:8px auto;max-width:1000px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${GAMES.map(g=>`<button class="card sm${roster.game===g.id?' picked':''}" style="--a:${g.color}" data-act="pick-game" data-id="${g.id}"><div class="ic">${g.icon}</div><h2>${g.name}</h2><p>${g.tag}</p></button>`).join('')}</div>
+  <div class="lbl sm">2 · How many players can join?</div>
   <div class="stepper"><button class="rnd" data-act="dec">−</button><div class="big" id="cnt">${roster.n}</div><button class="rnd" data-act="inc">+</button></div>
   <input type="range" id="rng" min="4" max="20" value="${roster.n}">
-  <div class="lbl sm">Names (optional, you can fill in as many as you like)</div><div class="names" id="names"></div>
-  <div class="lbl sm">Teams (games on this screen; Globe Trotters teams are set in its lobby)</div>
+  <div class="sub" style="font-size:15px">Players join on their own phones with a game code and type their own name. The code is for this game only.</div>
+  <div class="lbl sm">3 · Teams</div>
   <div class="settings"><label>Split everyone into <select data-chg="teams">${[0,2,3,4,5,6].map(v=>`<option value="${v}"${roster.teams===v?' selected':''}>${v?v+' teams':'No teams (everyone for themselves)'}</option>`).join('')}</select></label></div>
-  <button class="btn xl" data-act="go">Let's Play ▶</button></div>`;
-  drawNames();$('#rng').oninput=e=>setCount(+e.target.value);
+  <div class="err" id="seterr" role="alert" style="color:var(--bad);text-align:center;min-height:1.2em">${msg?esc(msg):''}</div>
+  <button class="btn xl" id="gobtn" data-act="go">Open the lobby ▶</button></div>`;
+  $('#rng').oninput=e=>setCount(+e.target.value);
 }
-function drawNames(){
-  const el=$('#names');
-  el.innerHTML=Array.from({length:roster.n},(_,i)=>`<label class="nm"><i style="background:${colorOf(i)}">${i+1}</i><input data-i="${i}" maxlength="14" placeholder="Player ${i+1}" value="${esc(roster.names[i]||'')}"></label>`).join('');
-  el.querySelectorAll('input').forEach(inp=>inp.oninput=()=>{roster.names[+inp.dataset.i]=inp.value;});
+function setCount(n){roster.n=Math.max(4,Math.min(20,n));$('#cnt').textContent=roster.n;$('#rng').value=roster.n;}
+
+/* ---- lobby: the game code, and names popping up as people join ---- */
+function joinBox(code){
+  const local=/^(localhost|127\.|\[::1\])/.test(location.hostname);
+  return`<div class="joinbox"><div><div class="lbl">On your phone, go to</div><div class="joinurl">${esc(location.origin.replace(/^https?:\/\//,''))}</div>${local?'<div class="sub" style="font-size:13px;max-width:420px">Phones can\'t reach "localhost". Open this host page using your computer\'s Wi-Fi address (shown in the black window) so the right address appears here.</div>':''}</div>
+  <div><div class="lbl">Game code</div><div class="code">${esc(code)}</div></div></div>`;
 }
-function setCount(n){roster.n=Math.max(4,Math.min(20,n));$('#cnt').textContent=roster.n;$('#rng').value=roster.n;drawNames();}
+const LOBBY={key:'',seen:new Set(),
+  draw(){
+    const s=ROOM.st;if(!s)return;
+    const g=GAMES.find(x=>x.id===s.settings.game)||GAMES[0],set=s.settings;
+    if(LOBBY.key!==s.code||!$('#lby')){
+      LOBBY.key=s.code;LOBBY.seen=new Set();
+      const sel=(k,vals,cur)=>`<select data-chg="gt-set" data-k="${k}">${vals.map(v=>`<option value="${esc(v)}"${String(v)===String(cur)?' selected':''}>${esc(v)}</option>`).join('')}</select>`;
+      const gtset=g.id==='globetrotters'?`<div class="settings">
+          <label>Rounds ${sel('rounds',[5,8,10,15,20],set.rounds)}</label>
+          <label>Seconds to guess ${sel('seconds',[20,30,45,60,90],set.seconds)}</label>
+          <label>Places ${sel('category',s.categories||['All'],set.category)}</label>
+          <label class="chk"><input type="checkbox" data-chg="gt-set" data-k="hideName" ${set.hideName?'checked':''}> Hide the name (photo only)</label></div>`:'';
+      $('#view').innerHTML=`<div id="lby" class="lobbywrap"><div class="gamebadge" style="--a:${g.color}">${g.icon} ${g.name}</div>${joinBox(s.code)}${gtset}
+        <div class="lbl" id="lcount"></div><div id="lplayers"></div>
+        <div class="row" style="margin-top:0"><button class="btn sm alt" id="lshuf" data-act="gt-shuffle" hidden>🔀 Shuffle teams</button></div>
+        <button id="lgo" class="btn xl" data-act="start-game">Start ${g.name} ▶</button>
+        <div class="hint">${g.id==='globetrotters'?'Everyone plays on their phone. ':'You run this one from the big screen: tap names to score. '}Others can still join with the code until you start.</div>
+        <div class="row"><button class="btn sm alt" data-act="new-room">⟲ New game night / pick a different game</button></div></div>`;
+    }
+    $('#lcount').textContent=s.players.length?`${s.players.length} / ${set.max} players joined`:`Waiting for players… (up to ${set.max})`;
+    const box=$('#lplayers');
+    if(s.teams){
+      box.innerHTML=teamBoxes(s.teams,s.players,'gt-move')+'<div class="hint">Tap a player to move them to the next team</div>';
+    }else{
+      // add new names one by one so each pops in, and never redraw the ones already there (that would cut the animation short)
+      let grid=box.querySelector('.pgrid[data-flat]');
+      if(!grid){box.innerHTML='<div class="pgrid" data-flat></div>';grid=box.firstChild;}
+      s.players.forEach(p=>{
+        let el=grid.querySelector(`[data-pid="${p.id}"]`);
+        if(!el){el=document.createElement('div');el.className='pc pop';el.dataset.pid=p.id;el.style.cursor='default';el.style.setProperty('--c',p.color);el.textContent=p.name;grid.appendChild(el);}
+        el.style.opacity=p.connected?'':'.4';
+      });
+    }
+    $('#lshuf').hidden=!s.teams;
+    $('#lgo').disabled=!s.players.length;
+  },
+};
+function viewLobby(){
+  GT.stop();S.screen='lobby';G=null;T.stop();Snd.loop('lobby');renderBoard();
+  LOBBY.key='';LOBBY.draw();
+}
 
 const GAMES=[
   {id:'jeopardy',icon:'🎯',name:'THE BIG BOARD',color:'#4f7bff',tag:'Four full Jeopardy boards. Daily Double, secret-wager Final round.',
     info:b=>b.boards.length+' full boards',start:()=>JP.menu()},
   {id:'globetrotters',icon:'🌍',name:'GLOBE TROTTERS',color:'#2fd573',live:true,tag:'GeoGuessr-style. Everyone joins on their phone, drops a pin, and scores by how close they get.',
-    start:()=>GT.start()},
+    start:()=>ROOM.post('/api/host/start')},
   {id:'spotthefake',icon:'🕵️',name:'SPOT THE FAKE',color:'#ff4d5e',tag:'Two truths and a lie, with wild-but-true facts. Can the room spot the liar?',
     info:b=>b.rounds.length+' rounds',start:()=>SF.start()},
   {id:'crowdcontrol',icon:'🎉',name:'CROWD CONTROL',color:'#ffcf3a',tag:'Would-you-rathers and Most Likely To. Go with the majority, or crown your friend.',
     info:b=>(b.rather.length+b.likely.length)+' prompts',start:()=>CC.start()},
 ];
-function viewHub(){
-  GT.stop();S.screen='hub';G=null;T.stop();renderBoard();Snd.loop('lobby');
-  $('#view').innerHTML=`<h1 class="logo" style="font-size:clamp(34px,5vw,70px)">CHOOSE YOUR GAME</h1>
-  <div class="sub">${players.length} players ready${roster.teams?` · ${roster.teams} teams`:''}</div>
-  <div class="panel" id="teampanel" style="max-width:1100px;padding:12px 18px;margin:8px auto"${roster.teams?'':' hidden'}>${teamPanel()}</div>
-  <div class="cards">${GAMES.map(g=>{const b=BANKS[g.id];return`<button class="card" style="--a:${g.color}" data-act="game" data-id="${g.id}">
-    <div class="ic">${g.icon}</div><h2>${g.name}</h2><p>${g.tag}</p>
-    <span class="tag">${g.live?'LIVE · PHONES JOIN':b?g.info(b):'no bank'}</span>${b&&b.sample?'<span class="tag warn">SAMPLE BANK</span>':''}</button>`;}).join('')}</div>`;
-}
-
 /* ================= GAME 1: THE BIG BOARD ================= */
 const JP={
   menu(){
@@ -460,74 +559,28 @@ const JP={
 
 /* ================= GAME 2: GLOBE TROTTERS (live, players join on phones) ================= */
 const GT={
-  es:null,st:null,off:0,iv:null,map:null,key:'',shown:false,tok:null,info:null,
-  stop(){
-    if(GT.es){GT.es.close();GT.es=null;}
+  iv:null,map:null,key:'',shown:false,
+  stop(){ // leaving the Globe Trotters screens (the room itself stays open)
     clearInterval(GT.iv);GT.iv=null;
     if(GT.map){GT.map.remove();GT.map=null;}
-    GT.st=null;GT.key='';GT.shown=false;
+    GT.key='';GT.shown=false;
   },
-  post(path,body){
-    return fetch(path+'?code='+encodeURIComponent(GT.info.code),{method:'POST',headers:{'content-type':'application/json','x-token':GT.tok},body:JSON.stringify(body||{})}).catch(()=>{});
+  begin(){ // the room left its lobby (the host pressed Start, or refreshed mid-game): show the live game
+    GT.stop();Snd.stop();lastGame='globetrotters';S.screen='gt';G={g:'gt',id:'globetrotters',lp:ROOM.st.players};renderBoard();GT.render();
   },
-  async start(){
-    GT.stop();Snd.stop();S.screen='gt';G={g:'gt',id:'globetrotters',lp:[]};renderBoard();
-    let j;
-    try{const r=await fetch('/api/host/new',{method:'POST'});if(r.status===401){location.href='/login';return;}if(!r.ok)throw new Error(r.status);j=await r.json();}
-    catch(e){
-      $('#view').innerHTML=`<div class="panel" style="text-align:center"><h2 style="color:var(--gold);font-family:Impact,sans-serif;letter-spacing:2px;font-size:34px">START THE GAME SERVER</h2>
-      <p class="sub">Globe Trotters is live: players join on their phones, so it needs the game server.</p>
-      <p class="sub">Open the site's <b>/host</b> page (your web address, or run <code>npm run dev</code> and open <b>http://localhost:3000/host</b>) and log in.</p>
-      <div class="row"><button class="btn alt" data-act="home">Back to menu</button></div></div>`;
-      return;
-    }
-    GT.tok=j.token;GT.info=j;
-    if(roster.teams)GT.post('/api/host/settings',{teams:roster.teams});
-    GT.es=new EventSource('/api/events?role=host&code='+encodeURIComponent(j.code)+'&token='+encodeURIComponent(j.token));
-    GT.es.onmessage=e=>{GT.st=JSON.parse(e.data);GT.off=GT.st.now-Date.now();G.lp=GT.st.players;GT.render();};
-  },
-  again(){S.screen='gt';GT.shown=false;GT.key='';GT.post('/api/host/again');},
+  again(){S.screen='gt';GT.shown=false;GT.key='';ROOM.post('/api/host/again');},
   render(){
-    const s=GT.st;if(!s||S.screen==='hub')return;
+    const s=ROOM.st;if(!s||!G||G.g!=='gt')return;
     if(s.phase==='closed')return;
     if(s.phase!=='end'&&S.screen==='results')S.screen='gt';
     renderBoard();
-    if(s.phase==='lobby')GT.lobby();
+    if(s.phase==='lobby'){viewLobby();return;} // Play Again / left the game: back to the lobby
     else if(s.phase==='guess')GT.guess();
     else if(s.phase==='reveal')GT.reveal();
     else if(s.phase==='end'&&!GT.shown){GT.shown=true;GT.key='';clearInterval(GT.iv);if(GT.map){GT.map.remove();GT.map=null;}finish('FINAL SCORES');}
   },
-  lobby(){
-    const s=GT.st,set=s.settings;
-    if(GT.key!=='lobby'||!$('#gtl')){
-      GT.key='lobby';clearInterval(GT.iv);if(GT.map){GT.map.remove();GT.map=null;}Snd.loop('lobby');
-      const sel=(k,vals,cur,fmtf=v=>v)=>`<select data-chg="gt-set" data-k="${k}">${vals.map(v=>`<option value="${esc(v)}"${String(v)===String(cur)?' selected':''}>${esc(fmtf(v))}</option>`).join('')}</select>`;
-      const urls=[location.origin]; // the address the host is using is the one the players should use
-      $('#view').innerHTML=`<div id="gtl" class="clue" style="max-width:1150px">
-        <h1 class="logo" style="font-size:clamp(34px,5vw,70px)">GLOBE TROTTERS</h1>
-        <div class="joinbox"><div><div class="lbl">On your phone, go to</div><div class="joinurl">${urls.map(u=>esc(u.replace(/^https?:\/\//,''))).join('<br>')}</div>${/^(localhost|127\.|\[::1\])/.test(location.hostname)?'<div class="sub" style="font-size:13px;max-width:420px">Phones can\'t reach "localhost". Open this host page using your computer\'s Wi-Fi address (shown in the black window) so the right address appears here.</div>':''}</div>
-        <div><div class="lbl">Game code</div><div class="code">${esc(s.code)}</div></div></div>
-        <div class="settings">
-          <label>Rounds ${sel('rounds',[5,8,10,15,20],set.rounds)}</label>
-          <label>Seconds to guess ${sel('seconds',[20,30,45,60,90],set.seconds)}</label>
-          <label>Places ${sel('category',s.categories,set.category)}</label>
-          <label>Max players ${sel('max',[4,6,8,10,12,14,16,18,20],set.max)}</label>
-          <label>Teams ${sel('teams',[0,2,3,4,5,6],set.teams||0,v=>v?v+' teams':'Solo')}</label>
-          <label class="chk"><input type="checkbox" data-chg="gt-set" data-k="hideName" ${set.hideName?'checked':''}> Hide the name (photo only)</label>
-        </div>
-        <div class="lbl" id="gtcount"></div><div id="gtp"></div>
-        <div class="row" style="margin-top:0"><button class="btn sm alt" id="gtshuf" data-act="gt-shuffle" hidden>🔀 Shuffle teams</button></div>
-        <button id="gtstart" class="btn xl" data-act="gt-start">Start Game</button></div>`;
-    }
-    $('#gtcount').textContent=`${s.players.length} / ${set.max} players joined`;
-    $('#gtp').innerHTML=s.teams
-      ?teamBoxes(s.teams,s.players,'gt-move')+'<div class="sub" style="font-size:14px">Tap a player to move them to the next team</div>'
-      :`<div class="pgrid">${s.players.map(p=>`<div class="pc" style="--c:${p.color};cursor:default;${p.connected?'':'opacity:.4'}">${esc(p.name)}</div>`).join('')}</div>`;
-    $('#gtshuf').hidden=!s.teams;
-    $('#gtstart').disabled=!s.players.length;
-  },
   guess(){
-    const s=GT.st,k='g'+s.idx;
+    const s=ROOM.st,k='g'+s.idx;
     if(GT.key!==k||!$('#gtg')){
       GT.key=k;if(GT.map){GT.map.remove();GT.map=null;}Snd.loop('think');
       const p=s.prompt;
@@ -538,7 +591,7 @@ const GT={
         ${T.html(s.settings.seconds)}<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="gt-reveal">Reveal now</button></div></div>`;
       clearInterval(GT.iv);let last=null;
       GT.iv=setInterval(()=>{
-        const left=Math.max(0,(GT.st.deadline-(Date.now()+GT.off))/1000),tot=GT.st.settings.seconds,f=$('#tfill'),n=$('#tnum');
+        const left=Math.max(0,(ROOM.st.deadline-(Date.now()+ROOM.off))/1000),tot=ROOM.st.settings.seconds,f=$('#tfill'),n=$('#tnum');
         if(f){f.style.width=(left/tot*100)+'%';f.style.backgroundPosition=((1-left/tot)*100)+'% 0';}
         if(n)n.textContent=Math.ceil(left);
         const ls=Math.ceil(left);if(ls!==last){last=ls;if(ls<=5&&ls>0)Snd.play(ls<=3?'tickHi':'tick');}
@@ -548,7 +601,7 @@ const GT={
     $('#gtlk').textContent=`${lk} / ${s.players.length} LOCKED IN`;
   },
   reveal(){
-    const s=GT.st,k='r'+s.idx;
+    const s=ROOM.st,k='r'+s.idx;
     if(GT.key===k&&$('#gtr'))return;
     GT.key=k;clearInterval(GT.iv);Snd.stop();Snd.play('reveal');
     if(GT.map){GT.map.remove();GT.map=null;}
@@ -652,17 +705,20 @@ const CC={
 /* ================= actions ================= */
 const ACT={
   dec:()=>setCount(roster.n-1),inc:()=>setCount(roster.n+1),
-  go:()=>{saveRoster();makePlayers();viewHub();},
-  'team-move':el=>{const p=players[+el.dataset.id];if(!p||!roster.teams)return;p.team=((p.team??-1)+1)%roster.teams;$('#teampanel').innerHTML=teamPanel();},
-  'team-shuffle':()=>{assignRosterTeams();$('#teampanel').innerHTML=teamPanel();},
-  'gt-shuffle':()=>GT.post('/api/host/teams',{shuffle:true}),
-  'gt-move':el=>{const p=GT.st&&GT.st.players.find(x=>x.id===el.dataset.id);if(!p||!GT.st.teams)return;GT.post('/api/host/teams',{move:{pid:p.id,team:((p.team??-1)+1)%GT.st.teams.length}});},
+  go:async()=>{ // open the lobby: create the room, then wait for players to join
+    saveRoster();const btn=$('#gobtn');if(btn)btn.disabled=true;
+    try{if(await ROOM.create(roster.n,roster.teams||0,roster.game))return viewLobby();throw new Error('no room');}
+    catch(e){viewSetup('Could not open the lobby. Open the site\'s /host page (or run npm run dev), log in, and try again.');}
+  },
+  'pick-game':el=>{roster.game=el.dataset.id;saveRoster();document.querySelectorAll('[data-act=pick-game]').forEach(c=>c.classList.toggle('picked',c===el));},
+  'start-game':()=>{const g=ROOM.st&&ROOM.st.settings.game;if(!g)return;if(g==='globetrotters')ROOM.post('/api/host/start');else startGame(g);},
+  'new-room':()=>{if(!confirm('Start a brand-new game night? Everyone will need to join again with the new code.'))return;ROOM.leave();viewSetup();},
+  'gt-shuffle':()=>ROOM.post('/api/host/teams',{shuffle:true}),
+  'gt-move':el=>{const p=ROOM.st&&ROOM.st.players.find(x=>x.id===el.dataset.id);if(!p||!ROOM.st.teams)return;ROOM.post('/api/host/teams',{move:{pid:p.id,team:((p.team??-1)+1)%ROOM.st.teams.length}});},
   logout:async()=>{if(inGame()&&S.screen!=='results'&&!confirm('Log out and leave this game?'))return;try{await fetch('/api/logout',{method:'POST'});}catch(e){}location.href='/login';},
-  players:()=>{if(inGame()&&!confirm('Leave this game to edit players? Scores will be lost.'))return;viewSetup();},
-  home:()=>{if(inGame()&&S.screen!=='results'&&!confirm('Leave this game? Scores will be lost.'))return;if(!players.length)return viewSetup();resetScores();viewHub();},
+  home:()=>{if(inGame()&&S.screen!=='results'&&!confirm('Go back to the lobby? Scores will be lost.'))return;if(!ROOM.st)return viewSetup();leaveGame();viewLobby();},
   mute:()=>{$('#mutebtn').textContent=Snd.toggle()?'🔇':'🔊';},
-  game:el=>{lastGame=el.dataset.id;GAMES.find(g=>g.id===lastGame).start();},
-  replay:()=>{if(G&&G.g==='gt')return GT.again();GAMES.find(g=>g.id===lastGame).start();},
+  replay:()=>{if(G&&G.g==='gt')return GT.again();startGame(lastGame);},
 
   /* big board */
   'jp-board':el=>JP.start(+el.dataset.i),
@@ -699,9 +755,8 @@ const ACT={
     players.forEach(p=>{const r=G.f.res[p.id]||0,w=G.f.w[p.id]||0;if(r===1)p.score+=w;else if(r===2)p.score-=w;});finish('FINAL SCORES');},
 
   /* globe trotters (live) */
-  'gt-start':()=>GT.post('/api/host/start'),
-  'gt-reveal':()=>GT.post('/api/host/reveal'),
-  'gt-next':()=>GT.post('/api/host/next'),
+  'gt-reveal':()=>ROOM.post('/api/host/reveal'),
+  'gt-next':()=>ROOM.post('/api/host/next'),
 
   /* spot the fake */
   'sf-reveal':()=>SF.reveal(),
@@ -733,11 +788,17 @@ document.addEventListener('click',e=>{
 const CHG={'teams':el=>{roster.teams=+el.value||0;saveRoster();},'gt-set':el=>{
   const k=el.dataset.k;let v=el.type==='checkbox'?el.checked:el.value;
   if(k!=='category'&&el.type!=='checkbox')v=+v;
-  GT.post('/api/host/settings',{[k]:v});
+  ROOM.post('/api/host/settings',{[k]:v});
 }};
 document.addEventListener('change',e=>{const el=e.target.closest('[data-chg]');if(el&&CHG[el.dataset.chg])CHG[el.dataset.chg](el);});
 if(location.protocol.startsWith('http')){$('#logoutbtn').hidden=false;fetch('/api/whoami').then(r=>r.json()).then(w=>{if(w.user)$('#logoutbtn').textContent='🔒 '+w.user+' · Log out';}).catch(()=>{});}
-viewSetup();
+// after a page refresh, pick the same game night back up (same code, same players); otherwise start at setup
+(async()=>{
+  $('#view').innerHTML='<div class="sub" style="margin-top:20vh">Loading…</div>';
+  let back=false;
+  if(location.protocol.startsWith('http')){try{back=await ROOM.resume();}catch(e){}}
+  if(back){if(!(G&&G.g==='gt'))viewLobby();}else viewSetup();
+})();
 </script>
 </body>
 </html>
