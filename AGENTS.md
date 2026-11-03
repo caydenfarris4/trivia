@@ -65,12 +65,15 @@ Optional. The host picks **No teams** or **2–6 teams** (Red, Blue, Green, Gold
 - Scoreboard: a coloured team row sits above the player chips. Podium: **Team standings** first, then **Top players** (top 5 individuals).
 - Teams are the same four-game feature everywhere; scoring rules of each game are unchanged.
 
-### 2.6 Host login
-- The host signs in at **`/login`** (or `/host`, which redirects there) with ONE shared password. Set it with the **`HOST_PASSWORD` environment variable**. If it is not set the server generates a random one on every start and prints it in the console (fine for a laptop; on a deployed server set it explicitly, otherwise it changes on each deploy).
-- Login sets an `HttpOnly; SameSite=Lax` cookie (`gn_host`, 12 h; `Secure` automatically behind an https proxy via `x-forwarded-proto`). Sessions are in memory, so a server restart logs the host out. After 8 wrong tries from one address the server answers 429 for 10 minutes.
-- What needs login: the host app (`/host`), the question banks `/banks/*.js` (they contain the answers), and `POST /api/host/new`. Everything else a host does also needs the per-game `x-token`.
-- The site root **`/`** is the player page: enter the 4-digit code + a name. It has a small "Host login" link.
-- There are no player accounts, usernames or database. Don't add them unless asked.
+### 2.6 Host account (login)
+- The host has a real **username + password account**. The site root `/` is the normal **player** screen (enter code + name); the host goes to **`/login`** (or `/host`, which redirects there if not logged in).
+- **First account only.** While no account exists, `/login` shows "Create host account" (username, password, confirm). Whoever creates the first account becomes the host, and sign-up then **closes for good** (`POST /api/signup` returns 403). Create it right after deploying. Optional hardening: set the **`SETUP_CODE`** env var and the first sign-up also needs that code, so a stranger who finds the site first can't claim it.
+- Usernames: 3-20 letters/numbers/`.`/`-`/`_`, case-insensitive. Passwords: 8-200 characters. Passwords are stored only as **scrypt hashes** (random 16-byte salt) in `DATA_DIR/users.json` (file mode 600, written atomically). `DATA_DIR` defaults to `./data` (git-ignored). **On a deployed server point `DATA_DIR` at a persistent disk**, otherwise the account vanishes on redeploy and sign-up reopens.
+- If `users.json` exists but is unreadable/corrupt the server **refuses to start** (it never treats that as "no accounts", which would reopen sign-up).
+- **Forgot the password?** Stop the server, delete `DATA_DIR/users.json`, start again, and create a new account.
+- Login sets an `HttpOnly; SameSite=Lax` cookie (`gn_host`, 12 h; `Secure` automatically behind an https proxy via `x-forwarded-proto`). Sessions are in memory, so a server restart logs the host out. After 8 wrong tries (logins or setup-code guesses) from one address the server answers 429 for 10 minutes. Wrong username and wrong password give the same error.
+- What needs login: the host app (`/host`), the question banks `/banks/*.js` (they contain the answers) and `POST /api/host/new`. Everything else a host does also needs the per-game `x-token`.
+- Players never have accounts: they join with the game code and a name. Only one host account exists (no multi-host/invite system yet).
 
 ## 3. How to run it
 
@@ -79,12 +82,12 @@ Requires **Node.js** (any recent version; v25 was used). **No `npm install`: the
 ```bash
 node server.js            # or double-click start.bat (opens the browser too)
 ```
-- Host screen: **http://localhost:3000/host** (start.bat opens it). You log in with `HOST_PASSWORD` (or the random password printed in the console). Example: `HOST_PASSWORD=mysecret node server.js`.
+- Host screen: **http://localhost:3000/host** (start.bat opens it). The first time, create the host account on that page (§2.6); after that, log in with it.
 - Players: the address shown in the Globe Trotters lobby (on a laptop that is the LAN address, e.g. `http://192.168.x.x:3000`; on a deployment it is the site's own address, e.g. `https://trivia.caydenfarris.net`), then the code.
 - Change port with `PORT=3055 node server.js`.
 - Opening `index.html` by double-click (file://) still runs games 1, 3, 4 (host-run) with no login, because no server is involved. **Globe Trotters needs the server** and shows a "Start the game server" panel if it can't reach it.
 - Internet needed for: Leaflet (cdnjs), OpenStreetMap tiles, Wikimedia photos. Everything else works offline.
-- **Internet play** is supported: run `server.js` on any Node host (it reads `PORT` and `HOST_PASSWORD`) behind https. The host opens `https://<site>/host`, logs in, and players open `https://<site>/` and enter the code. The owner's deployment is **trivia.caydenfarris.net** (set `HOST_PASSWORD` in the host's environment settings; make sure the proxy supports Server-Sent Events, i.e. does not buffer `/api/events`).
+- **Internet play** is supported: run `server.js` on any Node host (it reads `PORT`, `DATA_DIR` and `SETUP_CODE`) behind https. The host opens `https://<site>/host`, logs in, and players open `https://<site>/` and enter the code. The owner's deployment is **trivia.caydenfarris.net** (run it on a Node host with a **persistent disk** and set `DATA_DIR` to it; optionally set `SETUP_CODE`; make sure the proxy supports Server-Sent Events, i.e. does not buffer `/api/events`; then open `/login` once to create the host account). Plain Cloudflare Workers/static hosting cannot run this server.
 
 ### Running each game (host checklist)
 1. Start the server, open `localhost:3000/host` and log in, set the number of players (4–20) and optional names, press **Let's Play**. (This roster only feeds games 1, 3, 4. Globe Trotters players come from phones.)
@@ -99,7 +102,8 @@ GameNight/
   README.md              ← short human-facing summary
   start.bat              ← Windows launcher (checks Node, opens browser, runs server)
   server.js              ← Node server: host login, static files, Globe Trotters room/API + teams (zero deps)
-  login.html             ← host password page (/login)
+  login.html             ← host login + first-time "create host account" page (/login)
+  data/users.json        ← host account (scrypt hash), created at runtime, git-ignored; set DATA_DIR to relocate
   index.html             ← HOST app: hub, setup, all four games' host UIs, CSS, sound engine
   play.html              ← PLAYER page at `/`: enter code + name → (team badge) → map → result
   banks/
@@ -139,7 +143,9 @@ Routes:
 | `GET /host` (also `/index.html`) | host session cookie, else 302 → `/login` | the host app |
 | `GET /banks/<name>.js` | **host session cookie** (else 401) | host-run banks, they contain answers. `/banks/*.csv` is never served |
 | `GET /img/<file>` | anyone | Globe Trotters photos |
-| `POST /api/login` `{password}` / `POST /api/logout` / `GET /api/whoami` | anyone | host session (see §2.6) |
+| `POST /api/signup` `{username,password,setupCode?}` | anyone, **only while no account exists** | creates the host account and logs in |
+| `POST /api/login` `{username,password}` / `POST /api/logout` | anyone | host session (see §2.6) |
+| `GET /api/whoami` | anyone | `{host,user,canSignup,needsSetupCode}` |
 | `POST /api/host/new` | **host session cookie** (401 otherwise) | creates room → `{token, code, urls}`. `urls` = the address the host used (e.g. `https://trivia.caydenfarris.net`), or the LAN addresses when opened via localhost |
 | `POST /api/host/{settings,start,reveal,next,again}` | host (`x-token` header) | control the game. `settings` accepts `teams` (0 or 2–6) |
 | `POST /api/host/teams` `{shuffle:true}` or `{move:{pid,team}}` | host (`x-token`), lobby only | rearrange teams |
@@ -179,12 +185,13 @@ Remember to stop test servers (`Get-NetTCPConnection -LocalPort <port>` → `Sto
 - `qhead` header rows wrap on narrow screens (host window can be small).
 - Globe Trotters players list comes from the server. The host's 4–20 roster is separate and only used by games 1, 3, 4.
 - Early round end waits only for **connected** players; if someone's phone drops, others locking ends the round.
-- Don't add speed-based scoring, player accounts, or a database unless asked. The only login is the single shared **host** password (§2.6); players join with a code and name.
+- Don't add speed-based scoring, player accounts, or a database unless asked. The only account is the single **host** account (§2.6, a JSON file, not a database); players join with a code and name.
 - Git: this is a GitHub repo (`caydenfarris4/trivia`). Work on the designated feature branch; open a pull request only when the owner asks.
 
 ## 9. Open items / ideas (not started)
 - Team scoring option "average per member" (sum penalises smaller teams).
 - Host resume after refresh / re-login (a refresh still creates a new room).
+- Change-password screen, and more than one host account (invite).
 - Run `fetch_images.py`, review photos, add `globetrotters_images.csv`.
 - Optional speed bonus (Kahoot-style) in `endRound` scoring.
 - QR code for the join address in the Globe Trotters lobby.
