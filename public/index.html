@@ -475,7 +475,7 @@ const LOBBY={key:'',seen:new Set(),
         <div class="hint" id="lphotos"></div>`:'';
       const sfset=g.id==='spotthefake'?`<div class="settings"><label>Questions ${sel('rounds',[5,8,10,15,20],set.rounds)}</label><label>Seconds per question ${sel('seconds',[15,20,25,30],set.seconds)}</label></div>`:'';
       const pl=playedBoards(),cb=chosenBoard();
-      const jpset=g.id==='jeopardy'?`<div class="settings"><label>Board <select data-chg="jp-board">${BANKS.jeopardy.boards.map((b,i)=>`<option value="${i}"${i===cb?' selected':''}>${esc(b.name)}${pl.includes(i)?' (played)':''}</option>`).join('')}</select></label></div><div class="hint" id="lboardinfo">${boardCats(BANKS.jeopardy.boards[cb])}</div>`:'';
+      const jpset=g.id==='jeopardy'?`<div class="settings"><label>Seconds to answer after a buzz <select data-chg="gt-set" data-k="answerSeconds">${[5,8,10,15,20,30].map(v=>`<option value="${v}"${v===(set.answerSeconds||15)?' selected':''}>${v}</option>`).join('')}</select></label><label>Board <select data-chg="jp-board">${BANKS.jeopardy.boards.map((b,i)=>`<option value="${i}"${i===cb?' selected':''}>${esc(b.name)}${pl.includes(i)?' (played)':''}</option>`).join('')}</select></label></div><div class="hint" id="lboardinfo">${boardCats(BANKS.jeopardy.boards[cb])}</div>`:'';
       $('#view').innerHTML=`<div id="lby" class="lobbywrap"><div class="gamebadge" style="--a:${g.color}">${g.icon} ${g.name}</div>${joinBox(s.code)}${gtset}${sfset}${jpset}
         <div class="lbl" id="lcount"></div><div id="lplayers"></div>
         <div class="row" style="margin-top:0"><button class="btn sm alt" id="lshuf" data-act="gt-shuffle" hidden>🔀 Shuffle teams</button></div>
@@ -532,12 +532,17 @@ const JP={
   ensurePlayers(){ // players who joined after the board started
     ROOM.st.players.forEach(p=>{const id=+p.id;if(!players[id])players[id]={id,name:p.name,color:p.color,score:0,out:false,streak:0,team:p.team};});
   },
+  startTimer(){ // the answer timer (length is set in the lobby) starts by itself when someone buzzes in
+    const secs=(ROOM.st&&ROOM.st.settings.answerSeconds)||15;
+    Snd.loop('think');T.start(secs,{tickFrom:5,onEnd:()=>{Snd.stop();Snd.play('timeup');}});
+  },
   onRoom(){ // a fresh snapshot arrived while a clue is up: did someone buzz in?
     const s=ROOM.st;
     if(!s||!G||G.g!=='jp'||S.screen!=='jp-clue'||!G.cur||G.cur.dd||G.cur.peek||G.cur.stage!=='open')return;
     const z=s.buzz||{},by=z.by,k=(by?by.id:'-')+'|'+(z.open?1:0)+'|'+z.seq;
     if(G.cur.bk===k)return;G.cur.bk=k;
-    if(by){JP.ensurePlayers();const id=+by.id;if(players[id]&&!G.locked.has(id)){G.cur.sel=id;T.stop();Snd.stop();Snd.play('buzz');}}
+    if(by){JP.ensurePlayers();const id=+by.id;let started=false;if(players[id]&&!G.locked.has(id)){G.cur.sel=id;T.stop();Snd.stop();Snd.play('buzz');started=true;}
+      JP.clue();if(started)JP.startTimer();return;}
     JP.clue();
   },
   start(i){
@@ -574,7 +579,10 @@ const JP={
       h+=`<div class="ans">${esc(cl.a)}</div>${c.note?`<div class="note">${esc(c.note)}</div>`:''}<button class="btn xl" data-act="jp-back">Back to Board</button>`;
     }else{
       if(c.peek)h+=`<div class="ans">${esc(cl.a)}</div><div class="note">Answer revealed. Now mark it:</div>`;
-      else h+=T.html(15)+`<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="jp-timer">⏱ Start 15s timer</button></div>`;
+      else{
+        const secs=(ROOM.st&&ROOM.st.settings.answerSeconds)||15,auto=!c.dd&&ROOM.st&&ROOM.st.buzz&&ROOM.st.buzz.on;
+        h+=T.html(secs)+(auto?'<div class="sub" style="font-size:14px">The answer timer starts by itself when someone buzzes in.</div>':`<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="jp-timer">⏱ Start ${secs}s timer</button></div>`);
+      }
       if(c.dd){
         h+=`<p class="sub"><b style="color:${p.color}">${esc(p.name)}</b> answers for ${money(c.wager)}</p><div class="row"><button class="btn good" data-act="jp-ok">✓ Correct</button><button class="btn bad" data-act="jp-no">✗ Wrong</button>${c.peek?'':'<button class="btn alt" data-act="jp-peek">👁 Show answer first</button>'}</div>`;
       }else{
@@ -801,8 +809,8 @@ const ACT={
     if(G.cur.dd)JP.buzz('close');else JP.buzz('open',[]); // Daily Double: only the player in control answers, no buzzing
   },
   'jp-wager':()=>{const p=players[G.turn],max=Math.max(p.score,1000);let w=Math.round(+$('#wager').value/5)*5;w=Math.max(5,Math.min(max,w||5));G.cur.wager=w;G.cur.stage='open';Snd.play('reveal');JP.clue();},
-  'jp-timer':()=>{Snd.loop('think');T.start(15,{onEnd:()=>{Snd.stop();Snd.play('timeup');}});},
-  'jp-sel':el=>{G.cur.sel=+el.dataset.id;T.stop();Snd.stop();Snd.play('buzz');JP.clue();JP.buzz('close');},
+  'jp-timer':()=>{Snd.loop('think');T.start((ROOM.st&&ROOM.st.settings.answerSeconds)||15,{onEnd:()=>{Snd.stop();Snd.play('timeup');}});},
+  'jp-sel':el=>{G.cur.sel=+el.dataset.id;T.stop();Snd.stop();Snd.play('buzz');JP.clue();JP.buzz('close');if(ROOM.st&&ROOM.st.buzz&&ROOM.st.buzz.on)JP.startTimer();}, // picking someone by hand also starts the timer
   'jp-ok':()=>{
     const c=G.cur,pid=c.dd?G.turn:c.sel;if(pid==null)return;const amt=c.dd?c.wager:JP.cl().v;
     players[pid].score+=amt;G.turn=pid;c.stage='done';c.note=`${players[pid].name}  +${money(amt)}`;T.stop();Snd.stop();Snd.play('correct');JP.clue();JP.buzz('close');

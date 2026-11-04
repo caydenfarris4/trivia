@@ -114,6 +114,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
   <div id="bteam"></div>
   <button id="buzzbtn" class="buzzbtn" disabled>BUZZ</button>
   <div id="bstatus"></div>
+  <div id="btimer" style="font-family:Impact,sans-serif;font-size:44px;letter-spacing:2px;color:var(--gold);min-height:1.2em"></div>
   <div class="sub" id="bname"></div>
 </div></section>
 
@@ -257,7 +258,7 @@ function renderQuiz(){
 }
 
 /* ---------- The Big Board: buzz in on your phone (the server decides who was first) ---------- */
-let buzzSeen='';
+let buzzSeen='',biv=null;
 function renderBuzz(){
   show('s-buzz');
   const z=st.buzz,me2=st.me,t=myTeam(),btn=$('#buzzbtn');
@@ -276,6 +277,12 @@ function renderBuzz(){
   const key=z.seq+':'+(mine?'m':'');
   if(mine&&buzzSeen!==key){try{navigator.vibrate&&navigator.vibrate([60,40,60]);}catch(e){}}
   buzzSeen=key;
+  clearInterval(biv);
+  const bt=$('#btimer');
+  if(z.by&&z.deadline){ // the answer timer started when the first player buzzed in
+    const tick=()=>{const left=Math.max(0,Math.ceil((z.deadline-(Date.now()+off))/1000));bt.textContent='⏱ '+left+'s';bt.style.color=left<=3?'var(--bad)':'var(--gold)';};
+    tick();biv=setInterval(tick,200);
+  }else bt.textContent='';
 }
 (function(){
   const btn=document.getElementById('buzzbtn');
