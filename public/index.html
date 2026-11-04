@@ -534,7 +534,7 @@ const JP={
   },
   onRoom(){ // a fresh snapshot arrived while a clue is up: did someone buzz in?
     const s=ROOM.st;
-    if(!s||!G||G.g!=='jp'||S.screen!=='jp-clue'||!G.cur||G.cur.dd||G.cur.stage!=='open')return;
+    if(!s||!G||G.g!=='jp'||S.screen!=='jp-clue'||!G.cur||G.cur.dd||G.cur.peek||G.cur.stage!=='open')return;
     const z=s.buzz||{},by=z.by,k=(by?by.id:'-')+'|'+(z.open?1:0)+'|'+z.seq;
     if(G.cur.bk===k)return;G.cur.bk=k;
     if(by){JP.ensurePlayers();const id=+by.id;if(players[id]&&!G.locked.has(id)){G.cur.sel=id;T.stop();Snd.stop();Snd.play('buzz');}}
@@ -573,14 +573,15 @@ const JP={
     if(c.stage==='done'){
       h+=`<div class="ans">${esc(cl.a)}</div>${c.note?`<div class="note">${esc(c.note)}</div>`:''}<button class="btn xl" data-act="jp-back">Back to Board</button>`;
     }else{
-      h+=T.html(15)+`<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="jp-timer">⏱ Start 15s timer</button></div>`;
+      if(c.peek)h+=`<div class="ans">${esc(cl.a)}</div><div class="note">Answer revealed. Now mark it:</div>`;
+      else h+=T.html(15)+`<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="jp-timer">⏱ Start 15s timer</button></div>`;
       if(c.dd){
-        h+=`<p class="sub"><b style="color:${p.color}">${esc(p.name)}</b> answers for ${money(c.wager)}</p><div class="row"><button class="btn good" data-act="jp-ok">✓ Correct</button><button class="btn bad" data-act="jp-no">✗ Wrong</button></div>`;
+        h+=`<p class="sub"><b style="color:${p.color}">${esc(p.name)}</b> answers for ${money(c.wager)}</p><div class="row"><button class="btn good" data-act="jp-ok">✓ Correct</button><button class="btn bad" data-act="jp-no">✗ Wrong</button>${c.peek?'':'<button class="btn alt" data-act="jp-peek">👁 Show answer first</button>'}</div>`;
       }else{
         const z=ROOM.st&&ROOM.st.buzz,by=z&&z.by,tm=by&&ROOM.st.teams&&by.team!=null?ROOM.st.teams[by.team]:null;
         if(z&&z.on)h+=by?`<div class="buzzbanner got">⚡ <b style="color:${by.color}">${esc(by.name)}</b>${tm?` · Team ${esc(tm.name)}`:''} buzzed in first${by.ms!=null?` (${(by.ms/1000).toFixed(2)}s)`:''}! They say the answer out loud, then you mark it.</div>`:z.open?'<div class="buzzbanner open">🔔 Buzzers are OPEN: players buzz in on their phones…</div>':'<div class="buzzbanner">🔕 Buzzers are closed</div>';
         h+=`<p class="sub">${z&&z.on?'Or tap a name yourself if someone can\'t buzz:':'Who buzzed in first? Tap their name.'}</p>`+pgrid('jp-sel',q=>(G.locked.has(q.id)?'dis':c.sel===q.id?'sel':''))+
-        `<div class="row"><button class="btn good" data-act="jp-ok" ${c.sel==null?'disabled':''}>✓ Correct</button><button class="btn bad" data-act="jp-no" ${c.sel==null?'disabled':''}>✗ Wrong</button><button class="btn alt" data-act="jp-reveal">Nobody — show answer</button></div>`;
+        `<div class="row"><button class="btn good" data-act="jp-ok" ${c.sel==null?'disabled':''}>✓ Correct</button><button class="btn bad" data-act="jp-no" ${c.sel==null?'disabled':''}>✗ Wrong</button>${c.peek?'':'<button class="btn alt" data-act="jp-peek">👁 Show answer first</button>'}<button class="btn alt" data-act="jp-reveal">Nobody — show answer</button></div>`;
       }
     }
     $('#view').innerHTML=h+'</div>';renderBoard();
@@ -813,9 +814,10 @@ const ACT={
     const out=ROOM.st&&ROOM.st.teams&&players[pid].team!=null?players.filter(p=>p.team===players[pid].team).map(p=>p.id):[pid];
     out.forEach(i=>G.locked.add(i));
     c.note=`${players[pid].name}  -${money(amt)}`;
-    if(c.dd||G.locked.size>=players.length){c.stage='done';JP.buzz('close');}else JP.buzz('open',[...G.locked]); // the others can buzz again
+    if(c.dd||c.peek||G.locked.size>=players.length){c.stage='done';JP.buzz('close');}else JP.buzz('open',[...G.locked]); // the others can buzz again (not once the answer has been shown)
     JP.clue();
   },
+  'jp-peek':()=>{G.cur.peek=true;T.stop();Snd.stop();Snd.play('reveal');JP.buzz('hold');JP.clue();}, // show the answer, keep the buzzed-in player selected, then mark it
   'jp-reveal':()=>{G.cur.stage='done';G.cur.note='';T.stop();Snd.stop();Snd.play('reveal');JP.clue();JP.buzz('close');},
   'jp-back':()=>{G.used.add(G.cur.k);G.cur=null;JP.board();},
   'jp-final':()=>{if(confirm('Go to the Final Round now?')){JP.buzz('off');JP.final();}},

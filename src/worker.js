@@ -453,6 +453,7 @@ export class Game extends DurableObject {
         if (cmd === 'on' || cmd === 'off') r.buzz = { on: cmd === 'on', open: false, locked: [], by: null, seq: z.seq + 1, openedAt: 0 };
         else if (cmd === 'open') { z.on = true; z.open = true; z.by = null; z.locked = (Array.isArray(b.locked) ? b.locked : []).map(String).filter(id => r.players[id]); z.seq++; z.openedAt = Date.now(); }
         else if (cmd === 'close') { z.open = false; z.by = null; z.locked = []; z.seq++; }
+        else if (cmd === 'hold') { z.open = false; z.seq++; } // buzzers closed, but the player who buzzed in stays shown until the host marks it
         else return json({ error: 'bad command' }, 400);
         this.broadcast(); return json({ ok: true });
       }
