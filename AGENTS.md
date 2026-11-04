@@ -7,7 +7,7 @@ Read this first. It tells you what this project is, how each game plays and is r
 **Game Night Live** is a party-game-show app for **4–20 people** in one room, in the style of the quiz/geography/trivia reels on Instagram (jakelyonsgeo, bradyyourtutor, solunaaaa16 were the reference; the owner could not share formats, so these are general quiz-show formats). The goal is **fun for a group of young adults**, not pure trivia.
 
 - One **host** logs in with their host account (§2.6) and drives a big screen (laptop on a projector/TV). **The host picks the game first** (setup screen), and the random 4-digit code that opens is **for that one game**: players who enter it land in that game's lobby and their phone is told which game it is. There is no "choose a game" menu after players join; to play a different game the host makes a new game night (new code). Players never log in: like Jackbox/Kahoot they just go to the site, enter the code, and type their own name.
-- Three games are **host-run** (the host taps names on the big screen; phones just wait and show which game it is).
+- Two games are **live on the phones** (Globe Trotters and Spot the Fake: the server runs the rounds, timing and scoring) and two are **host-run** (The Big Board and Crowd Control: the host taps names on the big screen; phones just wait and show which game it is).
 - **Globe Trotters is live multiplayer**: players join on their own phones (like Kahoot/GeoGuessr).
 - Sound is **synthesized in the browser** (Web Audio). There are no audio files.
 
@@ -19,7 +19,7 @@ It runs on **Cloudflare Workers** (the owner's existing paid Cloudflare plan), l
 |---|------|------|-------------------|
 | 1 | **The Big Board** (Jeopardy-style) | host-run | `banks/jeopardy.js` — four full boards from the owner's CSV |
 | 2 | **Globe Trotters** (GeoGuessr/Kahoot-style) | **live, phones join** | `banks/globetrotters_bank.csv` (owner's), optional `banks/globetrotters_images.csv` |
-| 3 | **Spot the Fake** (two truths and a lie) | host-run | `banks/spotthefake.js` — written by Claude, fact-checked |
+| 3 | **Spot the Fake** (two truths and a lie) | **live, phones** (Kahoot-style) | `banks/spotthefake.js` — written by Claude, fact-checked; read by the server, never sent to a browser |
 | 4 | **Crowd Control** (Would You Rather + Most Likely To) | host-run | `banks/crowdcontrol.js` — written by Claude |
 
 Games 3 and 4 replaced earlier pure-trivia games (Last One Standing, Higher or Lower) at the owner's request. Don't bring them back unless asked. The old clue-based geography game was also replaced by the live Globe Trotters.
@@ -53,8 +53,14 @@ round score = name part + pin part
 
 The answer's coordinates are **never sent to clients before the reveal**. Keep it that way.
 
-### 2.3 Spot the Fake
-3 statements per round (2 true, 1 fake), shuffled. 25s timer. Players hold up 1/2/3 fingers. Host reveals, the fake is highlighted, the `why` text explains the truth, host taps everyone who spotted it (+100 each; **Everyone** / **Nobody** shortcuts). 10 rounds per game (`perGame`).
+### 2.3 Spot the Fake (live, Kahoot-style)
+Everyone answers on their phone. Flow: **lobby → (question → reveal) × N → end**, same room/lobby/teams machinery as Globe Trotters.
+1. The host picks Spot the Fake on the setup screen; in the lobby they choose the number of questions (5, 8, 10, 15, 20; default 10 = the bank's `perGame`) and seconds per question (15-30; default 25 = the bank's `seconds`), then **Start**.
+2. Each question shows 3 statements (2 true, 1 fake, shuffled by the server) on the big screen and on every phone as three big colored buttons. **Tapping a button submits that answer immediately** (it cannot be changed). The server records how long it took from the moment the question started.
+3. The question ends when everyone connected has answered, the host presses **Reveal now**, or the timer runs out (a Durable Object alarm).
+4. **Scoring (owner-specified, do not change without asking): Kahoot-style, worth up to 1,000 per question.** A right answer scores `round(1000 * (1 - (answer_time / time_limit) / 2))`: 1,000 for an instant answer, falling to 500 at the buzzer. A wrong answer or no answer scores 0. Team score = sum of members.
+5. Reveal: the big screen marks the FAKE and the TRUE statements, shows how many players picked each, the `why` text, and every player's ✅/❌, speed and points. Phones show ✅/❌, points, speed, the explanation and their rank.
+The server sends the three statements but **never says which one is the lie before the reveal**. Bank: `public/banks/spotthefake.js` (an ES module, `export default { seconds, perGame, rounds }`, imported by `src/worker.js`; it is listed in `public/.assetsignore` and is not served to browsers). Editing it needs a deploy.
 
 ### 2.4 Crowd Control
 14 rounds per game, mixed:
@@ -94,7 +100,7 @@ npm install        # once
 npm run dev        # or double-click start.bat (also prints your Wi-Fi addresses and opens the browser)
 ```
 - Host screen: **http://localhost:3000/host**. The first time, create the host account on that page (§2.6); it is kept in `.wrangler/state` (git-ignored). **For phones, open the host page using your computer's Wi-Fi address** (start.bat prints it, e.g. `http://192.168.1.20:3000/host`): the lobby shows whatever address the host page was opened with, and phones can't reach "localhost".
-- Opening `public/index.html` by double-click (file://) still runs games 1, 3, 4 (host-run) with no login, because no server is involved. **Globe Trotters needs the Worker** and shows a "Start the game server" panel if it can't reach it.
+- Opening `public/index.html` by double-click (file://) no longer works: the lobby and every game need the Worker (players join from their phones).
 - Internet needed for: Leaflet (cdnjs), OpenStreetMap tiles, Wikimedia photos. Everything else works offline.
 - To test locally with secrets: `npx wrangler dev --var SETUP_CODE:abc` (or a git-ignored `.dev.vars` file).
 
@@ -120,7 +126,7 @@ GameNight/
     img/                 ← OPTIONAL local photos referenced by the CSV `image_file` column (served at /img/<file>)
     banks/
       jeopardy.js        ← window.BANKS.jeopardy  = { boards: [...] }
-      spotthefake.js     ← window.BANKS.spotthefake
+      spotthefake.js     ← ES module `export default { seconds, perGame, rounds }` read by the Worker (not served to browsers)
       crowdcontrol.js    ← window.BANKS.crowdcontrol
       globetrotters_bank.csv   ← places: id,name,country,continent,category,lat,lon,radius_km,difficulty,reveal_blurb,image_search_query,image_file,visited
       globetrotters_images.csv ← photo URLs (header-only until `fetch_images.py` is run); bundled into the Worker
@@ -159,16 +165,16 @@ Routes:
 | `GET /`, `/play`, `/play.html` | anyone | the player page (join with code) |
 | `GET /login` | anyone | host login / create-account page |
 | `GET /host` (also `/index.html`) | host session cookie, else 302 → `/login` | the host app |
-| `GET /banks/<name>.js` | **host session cookie** (else 401) | host-run banks, they contain answers. The CSVs are never served |
+| `GET /banks/<name>.js` | **host session cookie** (else 401) | host-run banks (`jeopardy.js`, `crowdcontrol.js`), they contain answers. The CSVs and `spotthefake.js` are never served |
 | `GET /img/<file>` | anyone | Globe Trotters photos |
 | `POST /api/signup` `{username,password,setupCode?}` | anyone, **only while no account exists** | creates the host account and logs in |
 | `POST /api/login` `{username,password}` / `POST /api/logout` | anyone | host session (see §2.6) |
 | `GET /api/whoami` | anyone | `{host,user,canSignup,needsSetupCode}` |
 | `POST /api/host/new` | **host session cookie** (401 otherwise) | creates a game → `{token, code}` |
-| `POST /api/host/{settings,start,reveal,next,again}?code=` | host (`x-token` header) | control the game. `settings` (lobby only) accepts `game` (`jeopardy`/`globetrotters`/`spotthefake`/`crowdcontrol`: **which game this code is for**, default `globetrotters`), `max` (4–20 players), `teams` (0 or 2–6), and the Globe Trotters options. `start` only works when `game` is `globetrotters` (the other three are run from the host screen, so their room stays in `lobby` while the host plays). `again` resets the room to the lobby from any phase |
+| `POST /api/host/{settings,start,reveal,next,again}?code=` | host (`x-token` header) | control the game. `settings` (lobby only) accepts `game` (`jeopardy`/`globetrotters`/`spotthefake`/`crowdcontrol`: **which game this code is for**, default `globetrotters`), `max` (4–20 players), `teams` (0 or 2–6), and the live-game options (`rounds`, `seconds`, and Globe Trotters' `category`). Choosing a game also resets `rounds`/`seconds` to that game's defaults. `start` only works when `game` is `globetrotters` or `spotthefake` (the other two are run from the host screen, so their room stays in `lobby` while the host plays). `again` resets the room to the lobby from any phase |
 | `POST /api/host/teams?code=` `{shuffle:true}` or `{move:{pid,team}}` | host (`x-token`), lobby only | rearrange teams |
 | `POST /api/join` `{code,name}` | player | → `{pid, token, name, code}`; duplicate names get a number suffix |
-| `POST /api/guess?code=` `{pid,token,choice?,lat?,lon?,lock?}` | player | `choice` (0-3) = the name picked, `lat`/`lon` = the pin (each optional, sent as they change); `lock:true` locks the guess and may end the round early. Longitude is wrapped into [-180,180) |
+| `POST /api/guess?code=` `{pid,token,choice?,lat?,lon?,lock?}` (Globe Trotters) or `{pid,token,answer}` (Spot the Fake: 0-2, locks immediately, time recorded) | player | Globe Trotters: `choice` (0-3) = the name picked, `lat`/`lon` = the pin (each optional, sent as they change); `lock:true` locks the guess and may end the round early. Longitude is wrapped into [-180,180) |
 | `GET /api/events?code=&role=host&token=…` / `?code=&role=player&pid=…&token=…` | SSE | pushes a full state snapshot (`view(role,pid)`) on every change |
 
 State machine: `lobby → guess → reveal → guess … → end`, with `again` returning `end/reveal → lobby`. Every phase change calls `broadcast()`. Unlocked-pin updates do **not** broadcast (only locks do).
@@ -183,7 +189,7 @@ Sections `s-join`, `s-wait`, `s-play`, `s-end`. One Leaflet map instance reused 
 ## 6. Editing content
 
 - **Jeopardy:** the source CSV is `game,category,points,clue,answer`, with `Final` as the points value and a `Final Jeopardy: <topic>` category for each game's final. A one-off converter was used to produce `public/banks/jeopardy.js`; to regenerate from a new CSV, parse it the same way (respect quoted commas) and write `{boards:[{name,dailyDoubles,categories:[{name,clues:[{v,q,a}]}],final:{category,q,a}}]}`.
-- **Spot the Fake / Crowd Control:** edit the arrays in the bank files; formats are in each file's header.
+- **Spot the Fake:** edit `public/banks/spotthefake.js` (format in its header; it is read by the server, so a change needs a deploy). **Crowd Control:** edit the arrays in `public/banks/crowdcontrol.js`.
 - **Globe Trotters:** edit `public/banks/globetrotters_bank.csv`. `radius_km` is the "close enough" zone (0 penalty inside it). **Photos are required** (the game is photo-only): run `cd public/banks && python fetch_images.py` (the owner's contact email is already set in its User-Agent; needs `pip install requests` and internet), **review the output** because the top Wikipedia hit isn't always the right picture (delete or fix bad rows; rows with no `image_url` are skipped), then commit `globetrotters_images.csv` and deploy. Override one photo with your own file in `public/img/` and its filename in the `image_file` column. Current state: the owner ran the script and committed the file; **99 of the 100 places have a photo** (place 72, Sossusvlei Dunes, has none and is skipped). About 18 photos matched a Wikipedia article with a different title than the place (e.g. #20 Stonehenge matched "United Kingdom", #41 Na Pali Coast matched "Kailua, Hawaii", #58 Havasu Falls matched "Arizona", #94 Faroe Islands matched "List of tunnels of the Faroe Islands"); check those images before relying on them.
 - **Accuracy rule (owner requirement):** content you write (Spot the Fake, Crowd Control, blurbs) must be factually right. Prefer stable facts; avoid anything that changes yearly. Do **not** silently change the owner's clues; flag doubts instead. Known unverified owner clues (Game 3 Reality TV: *The Traitors: New Blood*, Survivor 51 "blood ring", Rob Rausch winning Traitors S4) were reported to the owner for checking.
 
@@ -207,7 +213,11 @@ Tips: `wrangler dev` rewrites the request's host name to the route in `wrangler.
 - The game night's players come from the server (the lobby). Host-run games snapshot them when the game starts; people who join later appear in the lobby and are included the next time a game starts (Play Again). Globe Trotters is played on the phones, so it always uses the live list.
 - Early round end waits only for **connected** players; if someone's phone drops, others locking ends the round. Because a dropped connection is only noticed on the next write, the Game object sends a keep-alive every 4 s.
 - Don't add speed-based scoring, player accounts, or an external database unless asked. The only account is the single **host** account (§2.6, stored in the Auth Durable Object); players join with a code and name.
-- **Map tiles come from OpenStreetMap's public server, which has rules:** (1) the browser must send a `Referer`, so pages must NOT be served with `Referrer-Policy: same-origin` or `no-referrer` (that made every tile show "403 Access blocked" once; `strict-origin-when-cross-origin` is correct); (2) the "© OpenStreetMap contributors" credit must stay visible on both maps (`attributionControl` on); (3) it is meant for light use. If tiles ever get blocked again, switch `L.tileLayer` (in `public/play.html` and `public/index.html`) to another tile provider. `referer_test`-style check: a cross-origin request from the page must carry `Referer: https://<site>/`.
+- **Map tiles:** the pages ask the Worker which tiles to use (`GET /api/map`, used by `addTiles()` in `public/play.html` and `public/index.html`).
+  - If the **`CARTO_KEY` secret** is set, they use **CARTO Voyager** (`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=...`), chosen because it was expected to label places in English instead of each country's own language (this has not been confirmed from the sandbox; check Japan/China/Russia/Egypt on the live site). CARTO raster tiles need a free key (keyless tiles are stamped "API KEY REQUIRED"); the credit "© OpenStreetMap contributors © CARTO" must stay visible.
+  - If `CARTO_KEY` is not set (or invalid), they fall back to the standard **OpenStreetMap** tiles, which always show names in the local language.
+  - **The key must never be committed: this repo is public.** Set it as a *secret* (Cloudflare dashboard → `trivia` Worker → Settings → Variables and Secrets → Add → type Secret → name `CARTO_KEY`; or `npx wrangler secret put CARTO_KEY`; locally use a git-ignored `.dev.vars` file). Secrets survive deploys (plain variables set in the dashboard do not). The key is still visible to anyone who opens the site's network tab, as with any browser map key, so watch the CARTO usage quota.
+  - **OpenStreetMap's rules (if you use its tiles):** the browser must send a `Referer`, so pages must NOT be served with `Referrer-Policy: same-origin` or `no-referrer` (that once made every tile show "403 Access blocked"; `strict-origin-when-cross-origin` is correct); the "© OpenStreetMap contributors" credit must stay visible; it is meant for light use. A cross-origin request from a page must carry `Referer: https://<site>/`.
 - **Phone guess screen layout:** the photo is the whole clue, so it is large (`clamp(120px,28vh,330px)` tall, full width, tap to enlarge) and the 4 name choices, map and Lock button must all fit without overlapping on 320x568 up to 412x915 phones; only the map flexes (`min-height` 105-150px). Check it after layout changes.
 - Never serve the answers: `/banks/*.js` is behind the host login and the CSVs are bundled, not served. Keep `run_worker_first` on.
 - Changing a Durable Object class name or deleting one needs a new `migrations` entry in `wrangler.jsonc`; adding fields to the saved state is fine (old games just lack them).
@@ -222,4 +232,4 @@ Tips: `wrangler dev` rewrites the request's host name to the route in `wrangler.
 - Review the Globe Trotters photos (about 18 matched a differently titled Wikipedia article, see §6) and find a photo for #72 Sossusvlei Dunes. Photos can only be fetched on a machine with internet (this sandbox cannot reach Wikipedia).
 - Optional speed bonus (Kahoot-style) in `endRound` scoring.
 - QR code for the join address in the Globe Trotters lobby.
-- Let phones also join Spot the Fake / Crowd Control (currently host-run).
+- Let phones also play Crowd Control (it is still run from the host screen; Spot the Fake is already live).

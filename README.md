@@ -11,6 +11,7 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 ## Deploying / changing it
 - Every push to `main` is built and deployed by Cloudflare automatically (Workers Builds runs `npx wrangler deploy`).
 - Needs a Cloudflare Workers **paid** plan (password hashing uses more CPU time than the free plan allows).
+- **Map tiles (English place names):** the maps use CARTO's Voyager style when a free CARTO key is set as a Cloudflare **secret** named `CARTO_KEY` (Cloudflare dashboard → the `trivia` Worker → Settings → Variables and Secrets → Add → type *Secret* → name `CARTO_KEY`, value = just the key, e.g. `cb1_...`). Never put the key in GitHub: this repo is public. Without the secret the maps still work, using OpenStreetMap tiles, which show each country's names in its own language.
 - Optional secret `SETUP_CODE`: if set, creating the first host account also requires this code, so nobody else can grab the host account before you do.
 - Practice on your own computer: install [Node.js](https://nodejs.org), then double-click **start.bat** (or run `npm install` then `npm run dev`). Open the host page using your computer's Wi-Fi address (start.bat prints it) so phones on the same Wi-Fi can join.
 
@@ -19,7 +20,7 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 |---|---|
 | **The Big Board** | Host-run Jeopardy. The host picks one of the four boards (from `public/banks/jeopardy.js`) on the setup screen when choosing the game; it can be changed in the lobby. |
 | **Globe Trotters** | **Live, like Kahoot/GeoGuessr.** Players join on their phones with the code and a name. The host clicks *Start* / *Next Round*, the place goes out to every phone at once, and everyone picks which of 4 names the place is **and** drops a pin before the timer runs out. Up to **5,000 a round**: 2,500 for picking the right name, plus up to 2,500 for the pin, `round(2500 * exp(-max(0, dist_km - radius_km) / 1500))`. The round ends early when everyone has locked in. |
-| **Spot the Fake** | Two truths and a lie. Host taps who spotted it. |
+| **Spot the Fake** | **Live, like Kahoot.** Two truths and a lie: everyone taps the lie on their phone. A right answer is worth up to **1,000 points, and the faster you answer the more you get** (1,000 for an instant answer, down to 500 at the buzzer); a wrong answer is 0. |
 | **Crowd Control** | Would-you-rather and Most Likely To. |
 
 ## Host account and teams
@@ -32,6 +33,6 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 - The lobby tells the host how many places have photos (for example "📷 80 of 100 places have photos"). Only those places are used.
 
 ## Other banks
-`public/banks/jeopardy.js`, `public/banks/spotthefake.js`, `public/banks/crowdcontrol.js` — formats are documented at the top of each file.
+`public/banks/jeopardy.js`, `public/banks/spotthefake.js`, `public/banks/crowdcontrol.js` — formats are documented at the top of each file. (Changing the Spot the Fake questions goes live after the automatic deploy, like the Globe Trotters places.)
 
 More detail for developers and AI assistants is in [AGENTS.md](AGENTS.md).

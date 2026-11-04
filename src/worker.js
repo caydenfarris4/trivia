@@ -2,13 +2,14 @@
 //
 //   Worker (this default export)  routes pages + API, checks the host's login cookie
 //   Auth  (Durable Object, one)   the host account (scrypt-hashed password), login sessions, rate limiting, the active game code
-//   Game  (Durable Object, per game code)  one live game: players, rounds, scores, teams, live updates (Server-Sent Events)
+//   Game  (Durable Object, per game code)  one live game (Globe Trotters / Spot the Fake): players, rounds, scores, teams, live updates (Server-Sent Events)
 //
 // Globe Trotters scoring: see NAME_PTS / pinScore below (owner-specified: ~half for knowing what it is, half for the pin)
 import { DurableObject } from 'cloudflare:workers';
 import { scryptSync, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 import bankCsv from '../public/banks/globetrotters_bank.csv';
 import imagesCsv from '../public/banks/globetrotters_images.csv';
+import SF_BANK from '../public/banks/spotthefake.js';
 
 /* ======================================================================== */
 /* shared helpers                                                           */
@@ -82,6 +83,17 @@ function buildOptions(pl) {
   for (const tier of tiers) for (const x of shuffle(tier)) { if (wrong.length < 3 && !seen.has(x.name)) { seen.add(x.name); wrong.push(x.name); } }
   return shuffle([pl.name, ...wrong]);
 }
+// Spot the Fake (live on the phones, Kahoot-style): tap the statement you think is the lie. A right answer is worth up to 1,000:
+//   points = round(1000 * (1 - (answer_time / time_limit) / 2))   -> 1,000 for an instant answer, 500 at the buzzer. Wrong or no answer = 0.
+const SF_ROUNDS = (SF_BANK.rounds || []).filter(q => q && q.topic && Array.isArray(q.real) && q.real.length === 2 && q.fake && q.why);
+const SF_PTS = 1000;
+const sfScore = (ms, totalMs) => Math.round(SF_PTS * (1 - Math.min(1, Math.max(0, ms) / totalMs) / 2));
+function buildSfRound(q) {
+  const cards = shuffle([...q.real.map(t => ({ t, fake: false })), { t: q.fake, fake: true }]);
+  return { topic: q.topic, why: q.why, cards, fakeIdx: cards.findIndex(c => c.fake) };
+}
+const LIVE_GAMES = ['globetrotters', 'spotthefake']; // played on the phones (the other two are run from the host screen)
+const GT_DEFAULT = { rounds: 10, seconds: 45 }, SF_DEFAULT = { rounds: SF_BANK.perGame || 10, seconds: SF_BANK.seconds || 25 };
 const GAMES = ['jeopardy', 'globetrotters', 'spotthefake', 'crowdcontrol']; // the game a code is for is chosen by the host before opening the lobby
 const TEAM_DEFS = [
   { name: 'Red', color: '#ff4d5e' }, { name: 'Blue', color: '#4f7bff' }, { name: 'Green', color: '#2fd573' },
@@ -175,7 +187,7 @@ export class Auth extends DurableObject {
 }
 
 /* ======================================================================== */
-/* Game Durable Object: one live Globe Trotters game                        */
+/* Game Durable Object: one live game (Globe Trotters or Spot the Fake)     */
 /* ======================================================================== */
 export class Game extends DurableObject {
   constructor(ctx, env) {
@@ -215,7 +227,9 @@ export class Game extends DurableObject {
   playerList() {
     return this.players().map(p => ({ id: p.id, name: p.name, color: p.color, score: p.score, locked: p.locked, connected: this.connCount(p.id) > 0, team: p.team }));
   }
-  promptOf(pl) { // photo only: the name is the answer, so it is never part of what players or the host screen get while guessing
+  promptOf(pl) {
+    if (this.r.settings.game === 'spotthefake') return { topic: pl.topic, statements: pl.cards.map(c => c.t) }; // never says which one is the lie before the reveal
+    // Globe Trotters is photo only: the name is the answer, so it is never part of what players or the host screen get while guessing
     return { category: pl.category, name: null, image: pl.img ? pl.img.url : null, options: this.r.opts ? this.r.opts[this.r.idx] : [] };
   }
   // Teams: team score = sum of its members' scores. Assignment is random (round-robin over a shuffle); the host can move people in the lobby.
@@ -243,16 +257,19 @@ export class Game extends DurableObject {
     if (r.phase === 'guess' || r.phase === 'reveal') v.prompt = this.promptOf(this.cur());
     if (r.phase === 'reveal') {
       const pl = this.cur();
-      v.answer = { name: pl.name, country: pl.country, lat: pl.lat, lon: pl.lon, radius: pl.radius, blurb: pl.blurb, credit: pl.img ? pl.img.credit : '' };
+      if (r.settings.game === 'spotthefake') {
+        const counts = [0, 0, 0]; for (const p of this.players()) if (p.answer != null) counts[p.answer]++;
+        v.answer = { fake: pl.fakeIdx, why: pl.why, topic: pl.topic, statements: pl.cards.map(c => ({ t: c.t, fake: c.fake })), counts };
+      } else v.answer = { name: pl.name, country: pl.country, lat: pl.lat, lon: pl.lon, radius: pl.radius, blurb: pl.blurb, credit: pl.img ? pl.img.credit : '' };
       v.results = r.results;
     }
     if (role === 'host') {
-      v.categories = this.categories(); v.count = PLACES.length; v.photos = PHOTO_PLACES.length;
+      v.categories = this.categories(); v.count = PLACES.length; v.photos = PHOTO_PLACES.length; v.sfRounds = SF_ROUNDS.length;
     } else {
       const p = r.players[pid];
       if (p) {
         const order = this.ranked(), rank = order.findIndex(x => x.id === p.id) + 1;
-        v.me = { id: p.id, name: p.name, color: p.color, team: p.team, score: p.score, locked: p.locked, guess: p.guess, choice: p.choice == null ? null : p.choice, last: p.last, rank, of: order.length };
+        v.me = { id: p.id, name: p.name, color: p.color, team: p.team, score: p.score, locked: p.locked, guess: p.guess, choice: p.choice == null ? null : p.choice, answer: p.answer == null ? null : p.answer, last: p.last, rank, of: order.length };
       }
     }
     return v;
@@ -290,14 +307,15 @@ export class Game extends DurableObject {
     if (r.idx >= r.rounds.length) { r.phase = 'end'; r.deadline = 0; return this.broadcast(); }
     r.phase = 'guess';
     r.deadline = Date.now() + r.settings.seconds * 1000;
-    for (const p of this.players()) { p.guess = null; p.choice = null; p.locked = false; p.last = null; }
-    r.results = null;
+    for (const p of this.players()) { p.guess = null; p.choice = null; p.answer = null; p.ms = null; p.locked = false; p.last = null; }
+    r.results = null; r.roundStart = Date.now();
     await this.ctx.storage.setAlarm(r.deadline + 300); // round timer: the alarm ends the round if nobody does
     this.broadcast();
   }
   endRound() {
     const r = this.r;
     if (!r || r.phase !== 'guess') return;
+    if (r.settings.game === 'spotthefake') return this.endRoundSf();
     const pl = this.cur(), opts = r.opts[r.idx], right = opts.indexOf(pl.name);
     for (const p of this.players()) {
       let dist = null, pinPts = 0;
@@ -307,6 +325,18 @@ export class Game extends DurableObject {
       p.last = { dist, pts, pinPts, namePts, correct: namePts > 0, picked };
     }
     r.results = this.ranked().map(p => ({ id: p.id, name: p.name, color: p.color, lat: p.guess ? p.guess.lat : null, lon: p.guess ? p.guess.lon : null, dist: p.last.dist, pts: p.last.pts, pinPts: p.last.pinPts, namePts: p.last.namePts, correct: p.last.correct, picked: p.last.picked, total: p.score }));
+    r.phase = 'reveal'; r.deadline = 0;
+    this.broadcast();
+  }
+  endRoundSf() { // Kahoot-style: right answer = up to 1,000, faster = more
+    const r = this.r, pl = this.cur(), total = r.settings.seconds * 1000;
+    for (const p of this.players()) {
+      const correct = p.answer != null && p.answer === pl.fakeIdx;
+      const pts = correct ? sfScore(p.ms == null ? total : p.ms, total) : 0;
+      p.score += pts;
+      p.last = { pts, correct, answer: p.answer == null ? null : p.answer, ms: p.ms == null ? null : p.ms };
+    }
+    r.results = this.ranked().map(p => ({ id: p.id, name: p.name, color: p.color, pts: p.last.pts, correct: p.last.correct, answer: p.last.answer, ms: p.last.ms, total: p.score }));
     r.phase = 'reveal'; r.deadline = 0;
     this.broadcast();
   }
@@ -347,7 +377,7 @@ export class Game extends DurableObject {
       const taken = new Set(this.players().map(p => p.name.toLowerCase()));
       let n = name0, k = 2; while (taken.has(n.toLowerCase())) n = name0.slice(0, 12) + ' ' + k++;
       const id = String(this.players().length), token = crypto.randomUUID();
-      r.players[id] = { id, token, name: n, color: colorOf(this.players().length), score: 0, guess: null, choice: null, locked: false, last: null, team: null };
+      r.players[id] = { id, token, name: n, color: colorOf(this.players().length), score: 0, guess: null, choice: null, answer: null, ms: null, locked: false, last: null, team: null };
       if (r.settings.teams) r.players[id].team = this.smallestTeam();
       this.broadcast();
       return json({ pid: id, token, name: n, code: r.code });
@@ -356,6 +386,13 @@ export class Game extends DurableObject {
       const p = r.players[String(b.pid)];
       if (!p || p.token !== b.token) return json({ error: 'bad player' }, 403);
       if (r.phase !== 'guess' || p.locked) return json({ ok: false });
+      if (r.settings.game === 'spotthefake') { // tapping an answer submits it straight away (no changing it), and the time it took is recorded
+        const a = Math.round(+b.answer);
+        if (b.answer === undefined || b.answer === null || !Number.isInteger(a) || a < 0 || a > 2) return json({ error: 'bad answer' }, 400);
+        p.answer = a; p.ms = Math.max(0, Date.now() - (r.roundStart || Date.now())); p.locked = true;
+        this.broadcast(); this.maybeEarlyEnd();
+        return json({ ok: true });
+      }
       // a guess has two parts, each optional: which name they picked (0-3) and where they put the pin
       if (b.choice !== undefined && b.choice !== null) { const c = Math.round(+b.choice); if (Number.isInteger(c) && c >= 0 && c < 4) p.choice = c; else return json({ error: 'bad choice' }, 400); }
       if (b.lat !== undefined && b.lat !== null || b.lon !== undefined && b.lon !== null) {
@@ -370,11 +407,11 @@ export class Game extends DurableObject {
       if (hostToken !== r.hostToken) return json({ error: 'bad token' }, 403);
       const a = act.slice(10), s = r.settings;
       if (a === 'settings' && r.phase === 'lobby') {
+        if ('game' in b && GAMES.includes(b.game) && b.game !== s.game) { s.game = b.game; const d = b.game === 'spotthefake' ? SF_DEFAULT : GT_DEFAULT; s.rounds = d.rounds; s.seconds = d.seconds; } // each game has its own sensible defaults
         if ('rounds' in b) s.rounds = clamp(Math.round(+b.rounds) || 10, 3, 30);
         if ('seconds' in b) s.seconds = clamp(Math.round(+b.seconds) || 45, 15, 180);
         if ('category' in b && this.categories().includes(b.category)) s.category = b.category;
         if ('max' in b) s.max = clamp(Math.round(+b.max) || 20, 4, 20);
-        if ('game' in b && GAMES.includes(b.game)) s.game = b.game;
         if ('teams' in b) { const t = Math.round(+b.teams) || 0; s.teams = t < 2 ? 0 : clamp(t, 2, 6); this.assignTeams(); }
         this.broadcast(); return json({ ok: true });
       }
@@ -384,8 +421,13 @@ export class Game extends DurableObject {
         this.broadcast(); return json({ ok: true });
       }
       if (a === 'start' && r.phase === 'lobby') {
-        if (s.game !== 'globetrotters') return json({ error: 'This game is run from the host screen.' }, 400);
+        if (!LIVE_GAMES.includes(s.game)) return json({ error: 'This game is run from the host screen.' }, 400);
         if (!this.players().length) return json({ error: 'No players yet.' }, 400);
+        if (s.game === 'spotthefake') {
+          if (!SF_ROUNDS.length) return json({ error: 'No Spot the Fake questions are available.' }, 400);
+          r.rounds = shuffle(SF_ROUNDS).slice(0, s.rounds).map(buildSfRound); r.opts = null; r.idx = -1;
+          await this.startRound(); return json({ ok: true });
+        }
         const pool = s.category === 'All' ? PHOTO_PLACES : PHOTO_PLACES.filter(p => p.category === s.category);
         if (!pool.length) return json({ error: PHOTO_PLACES.length ? 'No places with photos in that category.' : 'No place photos have been added yet. Globe Trotters is photo-only, so run fetch_images.py and deploy (see the README).' }, 400);
         r.rounds = shuffle(pool).slice(0, s.rounds); r.opts = r.rounds.map(buildOptions); r.idx = -1;
@@ -395,7 +437,7 @@ export class Game extends DurableObject {
       if (a === 'next' && r.phase === 'reveal') { await this.startRound(); return json({ ok: true }); }
       if (a === 'again') { // back to the lobby from any phase (also used when the host leaves a game mid-round)
         r.phase = 'lobby'; r.idx = -1; r.rounds = []; r.results = null; r.deadline = 0;
-        for (const p of this.players()) { p.score = 0; p.guess = null; p.choice = null; p.locked = false; p.last = null; }
+        for (const p of this.players()) { p.score = 0; p.guess = null; p.choice = null; p.answer = null; p.ms = null; p.locked = false; p.last = null; }
         this.broadcast(); return json({ ok: true });
       }
       return json({ error: 'not now' }, 400);
@@ -452,6 +494,16 @@ async function api(request, env, url) {
   }
   const auth = authStub(env);
 
+  if (p === '/api/map') { // which map tiles the pages should use
+    const key = String(env.CARTO_KEY || '').trim();
+    if (/^[A-Za-z0-9_-]{8,100}$/.test(key)) {
+      // CARTO Voyager: English-friendly basemap that needs a free key. The key is public to anyone who views the page, as with any browser map key.
+      return json({ provider: 'carto', url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=' + key, maxZoom: 19,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>' }, 200, { 'cache-control': 'private, max-age=300' });
+    }
+    return json({ provider: 'osm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 18,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }, 200, { 'cache-control': 'private, max-age=300' });
+  }
   if (p === '/api/whoami') return json(await auth.whoami(token));
   if (p === '/api/login' || p === '/api/signup') {
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405);

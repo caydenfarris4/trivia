@@ -3,9 +3,10 @@
 // `why` is read out on the reveal. Add your own in the same format.
 //
 // Format: { topic, real: [two TRUE statements], fake: the one LIE, why: the real story behind the lie }
-// The game shuffles the order of the three cards each round.
-window.BANKS = window.BANKS || {};
-window.BANKS.spotthefake = {
+// The game shuffles the order of the three statements each round.
+// This is a live phone game: players tap the statement they think is the lie, and a right answer is worth up to 1,000 points (faster = more).
+// `seconds` = default time per question, `perGame` = default number of questions. This file is read by the server (src/worker.js), not sent to browsers.
+export default {
   seconds: 25,
   perGame: 10,
   rounds: [
