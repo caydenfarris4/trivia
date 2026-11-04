@@ -2,4 +2,8 @@ data/
 *.tmp
 node_modules/
 .wrangler/
+# local secrets: never commit these (this repository is public)
 .dev.vars
+.env
+.env.*
+!.env.example
