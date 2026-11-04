@@ -46,6 +46,20 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .rows{display:grid;gap:5px;max-width:420px;margin:12px auto;width:100%}
 .rows div{display:flex;justify-content:space-between;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 12px}
 .rows .me{background:var(--gold);color:#000;font-weight:800}
+#s-quiz .qbody{flex:1;min-height:0;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.qtopic{font-family:Impact,sans-serif;letter-spacing:2px;color:var(--gold);font-size:18px}
+.qhelp{font-weight:700;font-size:clamp(16px,4.4vw,20px)}
+.qopt{display:flex;gap:10px;align-items:center;text-align:left;width:100%;padding:12px;border-radius:14px;border:3px solid rgba(255,255,255,.25);color:#fff;font:inherit;font-weight:700;font-size:clamp(15px,4.2vw,19px);line-height:1.25;min-height:72px;flex:none}
+.qopt b{font-family:Impact,sans-serif;font-size:1.5em;width:1.5em;height:1.5em;border-radius:50%;background:#000a;display:grid;place-items:center;flex:none}
+.qopt span{flex:1}
+.qopt em{font-style:normal;font-size:.75em;font-family:Impact,sans-serif;letter-spacing:1px;white-space:nowrap}
+.q0{background:#d62839}.q1{background:#1d6fe0}.q2{background:#d79a00;color:#1a1100}
+.qopt.sel{outline:4px solid #fff;outline-offset:2px}
+.qopt.dim{opacity:.35}
+.qopt.right{box-shadow:0 0 0 4px #fff,0 0 24px #fff}
+.qopt.truth{opacity:.55}
+#qres .big{font-family:Impact,sans-serif;font-size:48px;color:var(--gold);line-height:1;animation:pop .5s}
+#qres .line{margin-top:4px}
 #opts{display:none;flex:none;grid-template-columns:1fr 1fr;gap:5px;padding:5px 10px;background:rgba(0,0,40,.7)}
 #opts.on{display:grid}
 #opts button{font-family:inherit;font-weight:700;font-size:clamp(13px,3.6vw,16px);line-height:1.15;color:#fff;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);border-radius:10px;padding:6px 6px;min-height:42px}
@@ -89,6 +103,18 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 
 <div id="zoom" onclick="this.classList.remove('on')"><img alt=""></div>
 
+<section id="s-quiz">
+  <div class="top"><span id="qrnd"></span><span id="qtm"></span></div>
+  <div class="bar"><i id="qfill"></i></div>
+  <div class="qbody">
+    <div class="qtopic" id="qtopic"></div>
+    <div class="qhelp" id="qhelp"></div>
+    <div id="qopts" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div id="qres" class="res"></div>
+  </div>
+  <div class="foot" id="qfoot"></div>
+</section>
+
 <section id="s-end"><div class="center">
   <h1 class="logo" style="font-size:36px">GAME OVER</h1>
   <div style="font-size:64px" id="medal"></div>
@@ -103,7 +129,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 'use strict';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,choice=null,iv=null,view='';
+let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,choice=null,qsel=null,iv=null,view='';
 try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
 const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
 const myTeam=()=>st&&st.teams&&st.me&&st.me.team!=null?st.teams[st.me.team]:null;
@@ -173,13 +199,56 @@ function renderFoot(){
   }
 }
 
+/* ---------- Spot the Fake: tap the lie, Kahoot-style (right answer = up to 1,000 points, faster = more) ---------- */
+function quizOptions(){
+  const o=$('#qopts'),stm=st.prompt.statements,locked=!!(st.me&&st.me.locked)||qsel!=null;
+  o.innerHTML=stm.map((t,i)=>`<button class="qopt q${i}${qsel===i?' sel':''}${locked&&qsel!==i?' dim':''}" data-i="${i}" ${locked?'disabled':''}><b>${i+1}</b><span>${esc(t)}</span></button>`).join('');
+  o.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    if(qsel!=null||(st.me&&st.me.locked))return;
+    qsel=+b.dataset.i;quizOptions();quizFoot();
+    fetch('/api/guess?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token,answer:qsel})});
+  });
+}
+function quizFoot(){
+  $('#qfoot').innerHTML=st.phase==='guess'?(qsel!=null||(st.me&&st.me.locked)?'<button class="btn" disabled>Locked in ✓ Waiting for others…</button>':'<div class="sub" style="text-align:center">Tap the statement you think is the lie. Faster = more points!</div>'):'';
+}
+function renderQuiz(){
+  show('s-quiz');
+  const tmx=myTeam();
+  $('#qrnd').textContent=`QUESTION ${st.idx+1}/${st.total}`+(tmx?` · ${tmx.name.toUpperCase()}`:'');
+  document.querySelector('#s-quiz .top').style.boxShadow=tmx?`inset 0 -4px 0 ${tmx.color}`:'none';
+  const key='q'+st.phase+st.idx;
+  if(st.phase==='guess'){
+    if(view!==key){
+      view=key;qsel=st.me.answer==null?null:st.me.answer;
+      $('#qtopic').textContent=st.prompt.topic;$('#qhelp').textContent='Two of these are TRUE. Tap the LIE!';$('#qres').innerHTML='';
+      clearInterval(iv);
+      iv=setInterval(()=>{
+        const left=Math.max(0,(st.deadline-(Date.now()+off))/1000);
+        $('#qtm').textContent=Math.ceil(left)+'s';
+        $('#qfill').style.width=Math.min(100,left/(st.settings.seconds)*100)+'%';
+        $('#qfill').style.backgroundPosition=(100-Math.min(100,left/st.settings.seconds*100))+'% 0';
+      },200);
+    }
+    quizOptions();quizFoot();
+  }else if(st.phase==='reveal'&&view!==key){
+    view=key;clearInterval(iv);$('#qtm').textContent='';$('#qfill').style.width='0';
+    const a=st.answer,l=st.me.last||{pts:0,correct:false,answer:null,ms:null};
+    $('#qtopic').textContent=a.topic;
+    $('#qhelp').textContent=l.correct?'✅ You spotted the fake!':l.answer==null?'⏱ Time ran out':'❌ That one was true';
+    $('#qopts').innerHTML=a.statements.map((x,i)=>`<button class="qopt q${i} ${x.fake?'right':'truth'}${l.answer===i?' sel':''}" disabled><b>${i+1}</b><span>${esc(x.t)}</span><em>${x.fake?'🚨 FAKE':'✓ TRUE'}${l.answer===i?' · YOU':''}</em></button>`).join('');
+    $('#qres').innerHTML=`<div class="big">+${l.pts.toLocaleString()}</div>${l.correct&&l.ms!=null?`<div class="line">Answered in ${(l.ms/1000).toFixed(1)}s (faster = more points)</div>`:''}<div class="line" style="color:var(--mute)">${esc(a.why)}</div><div class="sm">#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts total</div>${myTeam()?`<div class="sm">Team ${esc(myTeam().name)}: #${teamRank(myTeam())} of ${st.teams.length} · ${myTeam().score.toLocaleString()} pts (+${myTeam().last.toLocaleString()})</div>`:''}`;
+    $('#qfoot').innerHTML='<div class="sub" style="text-align:center">Look at the big screen. Next question coming up…</div>';
+  }
+}
+
 function render(){
   if(st.phase==='closed'){try{localStorage.removeItem('gt.me');}catch(e){}me=null;if(es)es.close();show('s-join');$('#err').textContent='That game ended. Join a new one.';return;}
   if(!st.me){show('s-join');return;}
   me.color=st.me.color;
   if(st.phase==='lobby'){view='lobby';show('s-wait');$('#wname').textContent=st.me.name;$('#wcount').textContent=st.players.length+' player'+(st.players.length===1?'':'s')+' joined';
     const gm=st.settings&&st.settings.game;$('#wgame').textContent=GAME_NAMES[gm]?'Tonight: '+GAME_NAMES[gm]:'';
-    $('#wsub').textContent=gm==='globetrotters'?'Look at the big screen. The host will start the game.':'Look at the big screen: the host runs this game from there. Keep this page open!';
+    $('#wsub').textContent=gm==='globetrotters'||gm==='spotthefake'?'Look at the big screen. The host will start the game.':'Look at the big screen: the host runs this game from there. Keep this page open!';
     const t=myTeam();$('#wteam').innerHTML=t?`<span class="tbadge" style="background:${t.color}">Team ${esc(t.name)}</span>`:'';return;}
   if(st.phase==='end'){
     view='end';show('s-end');clearInterval(iv);
@@ -191,6 +260,7 @@ function render(){
     $('#etop').innerHTML=top.map((p,i)=>`<div class="${p.id===st.me.id?'me':''}"><span>${i+1}. ${esc(p.name)}</span><b>${p.score.toLocaleString()}</b></div>`).join('');
     return;
   }
+  if(st.settings&&st.settings.game==='spotthefake'){renderQuiz();return;}
   show('s-play');ensureMap();setTimeout(()=>map.invalidateSize(),50);
   const tmx=myTeam();
   $('#rnd').textContent=`ROUND ${st.idx+1}/${st.total}`+(tmx?` · ${tmx.name.toUpperCase()}`:'');

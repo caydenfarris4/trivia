@@ -1,2 +1,3 @@
 banks/*.csv
 banks/*.py
+banks/spotthefake.js

@@ -190,7 +190,6 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="banks/jeopardy.js"></script>
-<script src="banks/spotthefake.js"></script>
 <script src="banks/crowdcontrol.js"></script>
 <script>
 'use strict';
@@ -345,8 +344,9 @@ const ROOM={
   },
   changed(){ // a fresh snapshot arrived: refresh whatever screen is showing
     const s=ROOM.st;
-    if(s.settings.game==='globetrotters'&&s.phase!=='lobby'&&!(G&&G.g==='gt')){GT.begin();return;} // the host pressed Start (or refreshed mid-game)
-    if(G&&G.g==='gt'){G.lp=s.players;GT.render();return;}
+    const gm=s.settings.game,live=gm==='globetrotters'?GT:gm==='spotthefake'?SF:null,key=gm==='globetrotters'?'gt':'sf';
+    if(live&&s.phase!=='lobby'&&!(G&&G.g===key)){live.begin();return;} // the host pressed Start (or refreshed mid-game)
+    if(G&&(G.g==='gt'||G.g==='sf')){G.lp=s.players;(G.g==='gt'?GT:SF).render();return;}
     if(S.screen==='lobby')LOBBY.draw();
   },
 };
@@ -358,7 +358,7 @@ function syncPlayers(){ // host-run games use the players who have joined so far
 function teamTotals(){ // null when playing solo
   const t=ROOM.st&&ROOM.st.teams;
   if(!t)return null;
-  if(G&&G.g==='gt')return t;
+  if(G&&(G.g==='gt'||G.g==='sf'))return t;
   return t.map(x=>({id:x.id,name:x.name,color:x.color,score:players.filter(p=>p.team===x.id).reduce((a,p)=>a+p.score,0)}));
 }
 function teamBoxes(teams,list,act){
@@ -371,7 +371,7 @@ const MAP_CFG=fetch('/api/map').then(r=>r.ok?r.json():OSM_TILES).catch(()=>OSM_T
 const addTiles=m=>MAP_CFG.then(c=>{try{L.tileLayer(c.url,{maxZoom:c.maxZoom||18,attribution:c.attribution}).addTo(m);}catch(e){}});
 const resetScores=()=>players.forEach(p=>{p.score=0;p.out=false;p.streak=0;});
 function leaveGame(){ // leaving a Globe Trotters game (even mid-round): put the room back to its lobby state
-  if(G&&G.g==='gt'&&ROOM.st&&ROOM.st.phase!=='lobby')ROOM.post('/api/host/again');
+  if(G&&(G.g==='gt'||G.g==='sf')&&ROOM.st&&ROOM.st.phase!=='lobby')ROOM.post('/api/host/again');
 }
 function startGame(id){ // host-run games use whoever has joined so far
   lastGame=id;if(id!=='globetrotters')syncPlayers();
@@ -386,7 +386,7 @@ function renderBoard(){
   const list=G.lp||players,tt=teamTotals(),sv=n=>G.g==='jp'?money(n):fmt(n);
   const trow=tt?`<div class="trow">${tt.map(t=>`<div class="chip tchip" style="--c:${t.color}"><b>${esc(t.name)}</b><span>${sv(t.score)}</span></div>`).join('')}</div>`:'';
   el.innerHTML=trow+list.map(p=>{
-    const val=(G.g==='gt'&&p.locked&&ROOM.st&&ROOM.st.phase==='guess'?'✅ ':'')+sv(p.score);
+    const val=((G.g==='gt'||G.g==='sf')&&p.locked&&ROOM.st&&ROOM.st.phase==='guess'?'✅ ':'')+sv(p.score);
     const td=tt&&p.team!=null&&tt[p.team]?`<i class="td" style="background:${tt[p.team].color}"></i>`:'';
     return`<div class="chip${p.out||p.connected===false?' out':''}${G.g==='jp'&&G.turn===p.id?' turn':''}" style="--c:${p.color}">${td}<b>${esc(p.name)}</b><span>${val}</span></div>`;
   }).join('');
@@ -434,7 +434,7 @@ function boardCards(){
   return`<div class="cards" style="margin:8px auto;max-width:1000px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">${BANKS.jeopardy.boards.map((b,i)=>`<button class="card sm${i===sel?' picked':''}" style="--a:#4f7bff" data-act="pick-board" data-i="${i}"><h2>${esc(b.name.toUpperCase())}</h2><p>${boardCats(b)}</p>${pl.includes(i)?'<span class="tag warn">PLAYED</span>':'<span class="tag">NEW</span>'}</button>`).join('')}</div>`;
 }
 function viewSetup(msg){
-  GT.stop();S.screen='setup';G=null;T.stop();Snd.stop();renderBoard();
+  GT.stop();SF.stop();S.screen='setup';G=null;T.stop();Snd.stop();renderBoard();
   $('#view').innerHTML=`<h1 class="logo">GAME NIGHT<span>LIVE</span></h1>
   <div class="panel"><div class="lbl">1 · Which game are we playing?</div>
   <div class="cards" style="margin:8px auto;max-width:1000px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">${GAMES.map(g=>`<button class="card sm${roster.game===g.id?' picked':''}" style="--a:${g.color}" data-act="pick-game" data-id="${g.id}"><div class="ic">${g.icon}</div><h2>${g.name}</h2><p>${g.tag}</p></button>`).join('')}</div>
@@ -469,13 +469,14 @@ const LOBBY={key:'',seen:new Set(),
           <label>Seconds to guess ${sel('seconds',[20,30,45,60,90],set.seconds)}</label>
           <label>Places ${sel('category',s.categories||['All'],set.category)}</label></div>
         <div class="hint" id="lphotos"></div>`:'';
+      const sfset=g.id==='spotthefake'?`<div class="settings"><label>Questions ${sel('rounds',[5,8,10,15,20],set.rounds)}</label><label>Seconds per question ${sel('seconds',[15,20,25,30],set.seconds)}</label></div>`:'';
       const pl=playedBoards(),cb=chosenBoard();
       const jpset=g.id==='jeopardy'?`<div class="settings"><label>Board <select data-chg="jp-board">${BANKS.jeopardy.boards.map((b,i)=>`<option value="${i}"${i===cb?' selected':''}>${esc(b.name)}${pl.includes(i)?' (played)':''}</option>`).join('')}</select></label></div><div class="hint" id="lboardinfo">${boardCats(BANKS.jeopardy.boards[cb])}</div>`:'';
-      $('#view').innerHTML=`<div id="lby" class="lobbywrap"><div class="gamebadge" style="--a:${g.color}">${g.icon} ${g.name}</div>${joinBox(s.code)}${gtset}${jpset}
+      $('#view').innerHTML=`<div id="lby" class="lobbywrap"><div class="gamebadge" style="--a:${g.color}">${g.icon} ${g.name}</div>${joinBox(s.code)}${gtset}${sfset}${jpset}
         <div class="lbl" id="lcount"></div><div id="lplayers"></div>
         <div class="row" style="margin-top:0"><button class="btn sm alt" id="lshuf" data-act="gt-shuffle" hidden>🔀 Shuffle teams</button></div>
         <button id="lgo" class="btn xl" data-act="start-game">Start ${g.name} ▶</button>
-        <div class="hint">${g.id==='globetrotters'?'Everyone plays on their phone. ':'You run this one from the big screen: tap names to score. '}Others can still join with the code until you start.</div>
+        <div class="hint">${g.live?'Everyone plays on their phone. ':'You run this one from the big screen: tap names to score. '}Others can still join with the code until you start.</div>
         <div class="row"><button class="btn sm alt" data-act="new-room">⟲ New game night / pick a different game</button></div></div>`;
     }
     $('#lcount').textContent=s.players.length?`${s.players.length} / ${set.max} players joined`:`Waiting for players… (up to ${set.max})`;
@@ -504,7 +505,7 @@ const LOBBY={key:'',seen:new Set(),
   },
 };
 function viewLobby(){
-  GT.stop();S.screen='lobby';G=null;T.stop();Snd.loop('lobby');renderBoard();
+  GT.stop();SF.stop();S.screen='lobby';G=null;T.stop();Snd.loop('lobby');renderBoard();
   LOBBY.key='';LOBBY.draw();
 }
 
@@ -513,8 +514,8 @@ const GAMES=[
     info:b=>b.boards.length+' full boards',start:()=>JP.start(chosenBoard())},
   {id:'globetrotters',icon:'🌍',name:'GLOBE TROTTERS',color:'#2fd573',live:true,tag:'GeoGuessr-style. Everyone joins on their phone, drops a pin, and scores by how close they get.',
     start:()=>ROOM.post('/api/host/start')},
-  {id:'spotthefake',icon:'🕵️',name:'SPOT THE FAKE',color:'#ff4d5e',tag:'Two truths and a lie, with wild-but-true facts. Can the room spot the liar?',
-    info:b=>b.rounds.length+' rounds',start:()=>SF.start()},
+  {id:'spotthefake',icon:'🕵️',name:'SPOT THE FAKE',color:'#ff4d5e',live:true,tag:'Two truths and a lie. Everyone taps the lie on their phone: right answers score up to 1,000, faster = more.',
+    start:()=>ROOM.post('/api/host/start')},
   {id:'crowdcontrol',icon:'🎉',name:'CROWD CONTROL',color:'#ffcf3a',tag:'Would-you-rathers and Most Likely To. Go with the majority, or crown your friend.',
     info:b=>(b.rather.length+b.likely.length)+' prompts',start:()=>CC.start()},
 ];
@@ -651,32 +652,56 @@ const GT={
   },
 };
 
-/* ================= GAME 3: SPOT THE FAKE ================= */
+/* ================= GAME 3: SPOT THE FAKE (live: everyone answers on their phone, Kahoot-style) ================= */
+// Players tap the statement they think is the lie. A right answer is worth up to 1,000 points: the faster, the more (see src/worker.js).
 const SF={
-  start(){
-    const b=BANKS.spotthefake;resetScores();
-    G={g:'sf',id:'spotthefake',b,qs:shuffle(b.rounds).slice(0,b.perGame||10),i:0};SF.q();
+  iv:null,key:'',shown:false,
+  stop(){clearInterval(SF.iv);SF.iv=null;SF.key='';SF.shown=false;},
+  begin(){ // the room left its lobby (the host pressed Start, or refreshed mid-game)
+    SF.stop();Snd.stop();lastGame='spotthefake';S.screen='sf';G={g:'sf',id:'spotthefake',lp:ROOM.st.players};renderBoard();SF.render();
   },
-  q(){
-    const q=G.qs[G.i];
-    G.cards=shuffle([...q.real.map(t=>({t,fake:false})),{t:q.fake,fake:true}]);
-    G.stage='ask';G.marks=new Set();S.screen='sf';SF.draw();Snd.loop('think');
-    T.start(G.b.seconds||25,{onEnd:()=>SF.reveal()});
+  again(){S.screen='sf';SF.shown=false;SF.key='';ROOM.post('/api/host/again');},
+  render(){
+    const s=ROOM.st;if(!s||!G||G.g!=='sf')return;
+    if(s.phase==='closed')return;
+    if(s.phase!=='end'&&S.screen==='results')S.screen='sf';
+    renderBoard();
+    if(s.phase==='lobby'){viewLobby();return;}
+    else if(s.phase==='guess')SF.question();
+    else if(s.phase==='reveal')SF.reveal();
+    else if(s.phase==='end'&&!SF.shown){SF.shown=true;SF.key='';clearInterval(SF.iv);finish('FINAL SCORES');}
   },
-  reveal(){if(G.stage!=='ask')return;T.stop();Snd.stop();Snd.play('reveal');G.stage='reveal';SF.draw();},
-  draw(){
-    const q=G.qs[G.i],rv=G.stage==='reveal';
-    let h=`<div class="qhead"><span>${esc(q.topic)}</span><span>ROUND ${G.i+1} / ${G.qs.length}</span></div><div class="clue" style="max-width:1150px">
-    <div class="bigq" style="font-size:clamp(20px,2.6vw,34px)">Two of these are TRUE. One is a LIE.${rv?'':' Hold up 1, 2 or 3 fingers!'}</div>
-    <div class="sfcards">${G.cards.map((c,k)=>`<div class="opt o${k}${rv?(c.fake?' right':' truth'):''}"><b>${k+1}</b><span>${esc(c.t)}</span>${rv?`<em class="cnt">${c.fake?'🚨 FAKE':'✓ TRUE'}</em>`:''}</div>`).join('')}</div>`;
-    if(!rv){
-      h+=T.html(G.b.seconds||25)+`<div class="row" style="margin-top:0"><button class="btn alt" data-act="sf-reveal">Reveal now</button></div>`;
-    }else{
-      h+=`<div class="note">${esc(q.why)}</div><p class="sub">Tap everyone who spotted the fake (+100 each):</p>`+
-      pgrid('sf-mark',p=>G.marks.has(p.id)?'ok':'')+
-      `<div class="row"><button class="btn sm alt" data-act="sf-all">Everyone</button><button class="btn sm alt" data-act="sf-none">Nobody</button><button class="btn good" data-act="sf-next">${G.i+1>=G.qs.length?'Final Scores':'Next ▸'}</button></div>`;
+  question(){
+    const s=ROOM.st,k='q'+s.idx;
+    if(SF.key!==k||!$('#sfq')){
+      SF.key=k;Snd.loop('think');
+      const p=s.prompt;
+      $('#view').innerHTML=`<div id="sfq" class="clue" style="max-width:1150px"><div class="qhead"><span>${esc(p.topic)}</span><span>ROUND ${s.idx+1} / ${s.total}</span></div>
+        <div class="bigq" style="font-size:clamp(20px,2.6vw,34px)">Two of these are TRUE. One is a LIE. <b>Tap the lie on your phone!</b></div>
+        <div class="sfcards">${p.statements.map((t,i)=>`<div class="opt o${i}"><b>${i+1}</b><span>${esc(t)}</span></div>`).join('')}</div>
+        <div class="lbl" id="sfans"></div>
+        ${T.html(s.settings.seconds)}<div class="row" style="margin-top:0"><button class="btn alt" data-act="gt-reveal">Reveal now</button></div></div>`;
+      clearInterval(SF.iv);let last=null;
+      SF.iv=setInterval(()=>{
+        const left=Math.max(0,(ROOM.st.deadline-(Date.now()+ROOM.off))/1000),tot=ROOM.st.settings.seconds,f=$('#tfill'),n=$('#tnum');
+        if(f){f.style.width=(left/tot*100)+'%';f.style.backgroundPosition=((1-left/tot)*100)+'% 0';}
+        if(n)n.textContent=Math.ceil(left);
+        const ls=Math.ceil(left);if(ls!==last){last=ls;if(ls<=5&&ls>0)Snd.play(ls<=3?'tickHi':'tick');}
+      },150);
     }
-    $('#view').innerHTML=h+'</div>';renderBoard();
+    $('#sfans').textContent=`${s.players.filter(p=>p.locked).length} / ${s.players.length} ANSWERED`;
+  },
+  reveal(){
+    const s=ROOM.st,k='r'+s.idx;
+    if(SF.key===k&&$('#sfr'))return;
+    SF.key=k;clearInterval(SF.iv);Snd.stop();Snd.play('reveal');
+    const a=s.answer,right=s.results.filter(r=>r.correct).length,sec=ms=>ms==null?'no answer':(ms/1000).toFixed(1)+'s';
+    $('#view').innerHTML=`<div id="sfr" class="clue" style="max-width:1150px"><div class="qhead"><span>${esc(a.topic)}</span><span>ROUND ${s.idx+1} / ${s.total}</span></div>
+      <div class="sfcards">${a.statements.map((x,i)=>`<div class="opt o${i}${x.fake?' right':' truth'}"><b>${i+1}</b><span>${esc(x.t)}</span><em class="cnt">${x.fake?'🚨 FAKE':'✓ TRUE'} · ${a.counts[i]} picked it</em></div>`).join('')}</div>
+      <div class="note">${esc(a.why)}</div>
+      <div class="sub">${right} of ${s.results.length} spotted the fake · right answers score up to 1,000, faster = more</div>
+      <div class="gtlist" style="max-width:760px;margin:6px auto;max-height:none">${s.results.slice().sort((x,y)=>y.pts-x.pts||x.name.localeCompare(y.name)).map((r,i)=>`<div class="rrow" style="--c:${r.color}"><b>${i+1}</b><span>${esc(r.name)} ${r.correct?'✅':(r.answer==null?'⏱':'❌')}</span><em>${r.correct?sec(r.ms):''}</em><strong>+${r.pts.toLocaleString()}</strong></div>`).join('')}</div>
+      <div class="row"><button class="btn good" data-act="gt-next">${s.idx+1>=s.total?'Final Scores':'Next ▸'}</button></div></div>`;
   },
 };
 
@@ -735,14 +760,14 @@ const ACT={
   },
   'pick-game':el=>{roster.game=el.dataset.id;saveRoster();document.querySelectorAll('[data-act=pick-game]').forEach(c=>c.classList.toggle('picked',c===el));const bp=$('#boardpick');if(bp)bp.hidden=roster.game!=='jeopardy';},
   'pick-board':el=>{roster.board=+el.dataset.i;saveRoster();const bp=$('#boardpick');if(bp)bp.innerHTML='<div class="lbl sm">Which board?</div>'+boardCards();},
-  'start-game':()=>{const g=ROOM.st&&ROOM.st.settings.game;if(!g)return;if(g==='globetrotters')ROOM.post('/api/host/start');else startGame(g);},
+  'start-game':()=>{const g=ROOM.st&&ROOM.st.settings.game;if(!g)return;if(g==='globetrotters'||g==='spotthefake')ROOM.post('/api/host/start');else startGame(g);},
   'new-room':()=>{if(!confirm('Start a brand-new game night? Everyone will need to join again with the new code.'))return;ROOM.leave();viewSetup();},
   'gt-shuffle':()=>ROOM.post('/api/host/teams',{shuffle:true}),
   'gt-move':el=>{const p=ROOM.st&&ROOM.st.players.find(x=>x.id===el.dataset.id);if(!p||!ROOM.st.teams)return;ROOM.post('/api/host/teams',{move:{pid:p.id,team:((p.team??-1)+1)%ROOM.st.teams.length}});},
   logout:async()=>{if(inGame()&&S.screen!=='results'&&!confirm('Log out and leave this game?'))return;try{await fetch('/api/logout',{method:'POST'});}catch(e){}location.href='/login';},
   home:()=>{if(inGame()&&S.screen!=='results'&&!confirm('Go back to the lobby? Scores will be lost.'))return;if(!ROOM.st)return viewSetup();leaveGame();viewLobby();},
   mute:()=>{$('#mutebtn').textContent=Snd.toggle()?'🔇':'🔊';},
-  replay:()=>{if(G&&G.g==='gt')return GT.again();startGame(lastGame);},
+  replay:()=>{if(G&&G.g==='gt')return GT.again();if(G&&G.g==='sf')return SF.again();startGame(lastGame);},
 
   /* big board */
   'jp-pick':el=>{
@@ -781,16 +806,6 @@ const ACT={
   'gt-reveal':()=>ROOM.post('/api/host/reveal'),
   'gt-next':()=>ROOM.post('/api/host/next'),
 
-  /* spot the fake */
-  'sf-reveal':()=>SF.reveal(),
-  'sf-mark':el=>{const id=+el.dataset.id;G.marks.has(id)?G.marks.delete(id):G.marks.add(id);SF.draw();},
-  'sf-all':()=>{players.forEach(p=>G.marks.add(p.id));SF.draw();},
-  'sf-none':()=>{G.marks.clear();SF.draw();},
-  'sf-next':()=>{
-    G.marks.forEach(id=>players[id].score+=100);if(G.marks.size)Snd.play('correct');
-    G.i++;if(G.i>=G.qs.length)finish('FINAL SCORES');else SF.q();
-  },
-
   /* crowd control */
   'cc-tally':()=>{T.stop();Snd.stop();Snd.play('reveal');G.stage='tally';CC.draw();},
   'cc-mark':el=>{const id=+el.dataset.id;G.marks.has(id)?G.marks.delete(id):G.marks.add(id);CC.draw();},
@@ -820,7 +835,7 @@ if(location.protocol.startsWith('http')){$('#logoutbtn').hidden=false;fetch('/ap
   $('#view').innerHTML='<div class="sub" style="margin-top:20vh">Loading…</div>';
   let back=false;
   if(location.protocol.startsWith('http')){try{back=await ROOM.resume();}catch(e){}}
-  if(back){if(!(G&&G.g==='gt'))viewLobby();}else viewSetup();
+  if(back){if(!(G&&(G.g==='gt'||G.g==='sf')))viewLobby();}else viewSetup();
 })();
 </script>
 </body>
