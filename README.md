@@ -11,6 +11,7 @@ Four party games for 4–20 people, played on one big screen. Runs on **Cloudfla
 ## Deploying / changing it
 - Every push to `main` is built and deployed by Cloudflare automatically (Workers Builds runs `npx wrangler deploy`).
 - Needs a Cloudflare Workers **paid** plan (password hashing uses more CPU time than the free plan allows).
+- **Map tiles (English place names):** the maps use CARTO's Voyager style when a free CARTO key is set as a Cloudflare **secret** named `CARTO_KEY` (Cloudflare dashboard → the `trivia` Worker → Settings → Variables and Secrets → Add → type *Secret* → name `CARTO_KEY`, value = just the key, e.g. `cb1_...`). Never put the key in GitHub: this repo is public. Without the secret the maps still work, using OpenStreetMap tiles, which show each country's names in its own language.
 - Optional secret `SETUP_CODE`: if set, creating the first host account also requires this code, so nobody else can grab the host account before you do.
 - Practice on your own computer: install [Node.js](https://nodejs.org), then double-click **start.bat** (or run `npm install` then `npm run dev`). Open the host page using your computer's Wi-Fi address (start.bat prints it) so phones on the same Wi-Fi can join.
 

@@ -366,6 +366,9 @@ function teamBoxes(teams,list,act){
     return`<div class="tbox" style="--c:${t.color}"><div class="th">${esc(t.name)} <small>${m.length}</small></div>${m.map(p=>`<button class="tm${p.connected===false?' off':''}" data-act="${act}" data-id="${p.id}">${esc(p.name)}</button>`).join('')}</div>`;}).join('')}</div>`;
 }
 const teamPanel=()=>{const s=ROOM.st;return s&&s.teams?`<div class="lbl">Teams · tap a player to move them to the next team</div>${teamBoxes(s.teams,s.players,'gt-move')}<div class="row" style="margin-top:6px"><button class="btn sm alt" data-act="gt-shuffle">🔀 Shuffle teams</button></div>`:'';};
+const OSM_TILES={provider:'osm',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maxZoom:18,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'};
+const MAP_CFG=fetch('/api/map').then(r=>r.ok?r.json():OSM_TILES).catch(()=>OSM_TILES); // tile provider comes from the server (see AGENTS.md)
+const addTiles=m=>MAP_CFG.then(c=>{try{L.tileLayer(c.url,{maxZoom:c.maxZoom||18,attribution:c.attribution}).addTo(m);}catch(e){}});
 const resetScores=()=>players.forEach(p=>{p.score=0;p.out=false;p.streak=0;});
 function leaveGame(){ // leaving a Globe Trotters game (even mid-round): put the room back to its lobby state
   if(G&&G.g==='gt'&&ROOM.st&&ROOM.st.phase!=='lobby')ROOM.post('/api/host/again');
@@ -634,7 +637,7 @@ const GT={
     if(typeof L==='undefined'){$('#gtmap').innerHTML='<p class="sub">Map needs internet.</p>';return;}
     const m=GT.map=L.map('gtmap',{worldCopyJump:true,minZoom:1,attributionControl:true}).setView([20,10],2);
     if(m.attributionControl)m.attributionControl.setPrefix(false);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(m);
+    addTiles(m);
     const pts=[[a.lat,a.lon]];
     L.circle([a.lat,a.lon],{radius:Math.max(a.radius,.3)*1000,color:'#2fd573',weight:2,fillOpacity:.15}).addTo(m);
     L.marker([a.lat,a.lon],{icon:L.divIcon({className:'',html:'<div class="gtstar">⭐</div>',iconSize:[34,34],iconAnchor:[17,17]})}).addTo(m);

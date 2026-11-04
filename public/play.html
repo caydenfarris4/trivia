@@ -108,6 +108,9 @@ try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
 const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
 const myTeam=()=>st&&st.teams&&st.me&&st.me.team!=null?st.teams[st.me.team]:null;
 const teamRank=t=>[...st.teams].sort((a,b)=>b.score-a.score).findIndex(x=>x.id===t.id)+1;
+const OSM_TILES={provider:'osm',url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',maxZoom:18,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'};
+const MAP_CFG=fetch('/api/map').then(r=>r.ok?r.json():OSM_TILES).catch(()=>OSM_TILES); // tile provider comes from the server (see AGENTS.md)
+const addTiles=m=>MAP_CFG.then(c=>{try{L.tileLayer(c.url,{maxZoom:c.maxZoom||18,attribution:c.attribution}).addTo(m);}catch(e){}});
 const GAME_NAMES={jeopardy:'🎯 The Big Board',globetrotters:'🌍 Globe Trotters',spotthefake:'🕵️ Spot the Fake',crowdcontrol:'🎉 Crowd Control'};
 const fmtKm=d=>d<10?d.toFixed(1):Math.round(d).toLocaleString();
 
@@ -130,7 +133,7 @@ function ensureMap(){
   if(map)return;
   map=L.map('map',{minZoom:1,worldCopyJump:true,zoomControl:true,attributionControl:true}).setView([20,10],2);
   if(map.attributionControl)map.attributionControl.setPrefix(false); // keep the OpenStreetMap credit, drop the "Leaflet" prefix to save room
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(map);
+  addTiles(map);
   layer=L.layerGroup().addTo(map);
   map.on('click',e=>{
     if(!st||st.phase!=='guess'||(st.me&&st.me.locked))return;

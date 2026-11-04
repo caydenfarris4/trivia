@@ -452,6 +452,16 @@ async function api(request, env, url) {
   }
   const auth = authStub(env);
 
+  if (p === '/api/map') { // which map tiles the pages should use
+    const key = String(env.CARTO_KEY || '').trim();
+    if (/^[A-Za-z0-9_-]{8,100}$/.test(key)) {
+      // CARTO Voyager: English-friendly basemap that needs a free key. The key is public to anyone who views the page, as with any browser map key.
+      return json({ provider: 'carto', url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=' + key, maxZoom: 19,
+        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>' }, 200, { 'cache-control': 'private, max-age=300' });
+    }
+    return json({ provider: 'osm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 18,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }, 200, { 'cache-control': 'private, max-age=300' });
+  }
   if (p === '/api/whoami') return json(await auth.whoami(token));
   if (p === '/api/login' || p === '/api/signup') {
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
