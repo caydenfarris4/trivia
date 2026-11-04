@@ -131,7 +131,7 @@ GameNight/
       crowdcontrol.js    ← window.BANKS.crowdcontrol
       globetrotters_bank.csv   ← places: id,name,country,continent,category,lat,lon,radius_km,difficulty,reveal_blurb,image_search_query,image_file,visited
       globetrotters_images.csv ← photo URLs (header-only until `fetch_images.py` is run); bundled into the Worker
-      fetch_images.py    ← owner's script → writes globetrotters_images.csv (not run yet)
+      fetch_images.py    ← owner's script → writes globetrotters_images.csv (skips flags/maps/SVG/PNG and falls back to a Commons JPEG search; ALWAYS eyeball the result, a few rows were hand-picked after a visual audit)
     .assetsignore        ← keeps the CSVs and the script out of the uploaded static files
 ```
 Each bank `.js` file begins with a comment that documents its own format. Read it before editing.
