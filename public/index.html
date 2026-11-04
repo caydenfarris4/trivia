@@ -157,6 +157,9 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 @keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
 /* lobby */
 .pc.pop{animation:pop .45s}
+.buzzbanner{max-width:900px;margin:8px auto;padding:10px 16px;border-radius:12px;background:rgba(255,255,255,.1);font-size:clamp(16px,2vw,24px);font-weight:700;text-align:center}
+.buzzbanner.open{background:rgba(47,213,115,.22);border:2px solid var(--good)}
+.buzzbanner.got{background:rgba(255,207,58,.22);border:2px solid var(--gold);animation:pop .35s}
 .card.sm{padding:14px;border-width:3px}.card.sm .ic{font-size:40px}.card.sm h2{font-size:22px}.card.sm p{min-height:0;font-size:14px;margin:2px 0 0}
 .card.picked{transform:translateY(-4px);box-shadow:0 0 0 4px var(--a),0 10px 36px var(--a);background:linear-gradient(160deg,rgba(255,255,255,.28),rgba(0,0,40,.7))}
 .gamebadge{font-family:Impact,sans-serif;letter-spacing:3px;color:var(--a,#fff);font-size:clamp(26px,4vw,52px)}
@@ -347,6 +350,7 @@ const ROOM={
     const gm=s.settings.game,live=gm==='globetrotters'?GT:gm==='spotthefake'?SF:null,key=gm==='globetrotters'?'gt':'sf';
     if(live&&s.phase!=='lobby'&&!(G&&G.g===key)){live.begin();return;} // the host pressed Start (or refreshed mid-game)
     if(G&&(G.g==='gt'||G.g==='sf')){G.lp=s.players;(G.g==='gt'?GT:SF).render();return;}
+    if(G&&G.g==='jp'){JP.onRoom();return;}
     if(S.screen==='lobby')LOBBY.draw();
   },
 };
@@ -505,6 +509,7 @@ const LOBBY={key:'',seen:new Set(),
   },
 };
 function viewLobby(){
+  if(ROOM.st&&ROOM.st.buzz&&ROOM.st.buzz.on)ROOM.post('/api/host/buzz',{cmd:'off'}); // leaving the board: phones go back to waiting
   GT.stop();SF.stop();S.screen='lobby';G=null;T.stop();Snd.loop('lobby');renderBoard();
   LOBBY.key='';LOBBY.draw();
 }
@@ -521,10 +526,25 @@ const GAMES=[
 ];
 /* ================= GAME 1: THE BIG BOARD ================= */
 const JP={
+  buzz(cmd,locked){ // control the phones' buzzers (the server decides who buzzed in first)
+    if(ROOM.st&&ROOM.st.settings.game==='jeopardy')ROOM.post('/api/host/buzz',{cmd,locked:(locked||[]).map(String)});
+  },
+  ensurePlayers(){ // players who joined after the board started
+    ROOM.st.players.forEach(p=>{const id=+p.id;if(!players[id])players[id]={id,name:p.name,color:p.color,score:0,out:false,streak:0,team:p.team};});
+  },
+  onRoom(){ // a fresh snapshot arrived while a clue is up: did someone buzz in?
+    const s=ROOM.st;
+    if(!s||!G||G.g!=='jp'||S.screen!=='jp-clue'||!G.cur||G.cur.dd||G.cur.peek||G.cur.stage!=='open')return;
+    const z=s.buzz||{},by=z.by,k=(by?by.id:'-')+'|'+(z.open?1:0)+'|'+z.seq;
+    if(G.cur.bk===k)return;G.cur.bk=k;
+    if(by){JP.ensurePlayers();const id=+by.id;if(players[id]&&!G.locked.has(id)){G.cur.sel=id;T.stop();Snd.stop();Snd.play('buzz');}}
+    JP.clue();
+  },
   start(i){
     const b=BANKS.jeopardy.boards[i];resetScores();
     const cells=[];b.categories.forEach((c,ci)=>c.clues.forEach((_,ri)=>{if(ri>0)cells.push(ci+'-'+ri);}));
     G={g:'jp',id:'jeopardy',bi:i,b,used:new Set(),dd:new Set(shuffle(cells).slice(0,b.dailyDoubles??1)),turn:rand(players.length),locked:new Set(),f:null};
+    JP.buzz('on');
     JP.board();
   },
   cl:()=>G.b.categories[G.cur.ci].clues[G.cur.ri],
@@ -553,12 +573,15 @@ const JP={
     if(c.stage==='done'){
       h+=`<div class="ans">${esc(cl.a)}</div>${c.note?`<div class="note">${esc(c.note)}</div>`:''}<button class="btn xl" data-act="jp-back">Back to Board</button>`;
     }else{
-      h+=T.html(15)+`<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="jp-timer">⏱ Start 15s timer</button></div>`;
+      if(c.peek)h+=`<div class="ans">${esc(cl.a)}</div><div class="note">Answer revealed. Now mark it:</div>`;
+      else h+=T.html(15)+`<div class="row" style="margin-top:0"><button class="btn sm alt" data-act="jp-timer">⏱ Start 15s timer</button></div>`;
       if(c.dd){
-        h+=`<p class="sub"><b style="color:${p.color}">${esc(p.name)}</b> answers for ${money(c.wager)}</p><div class="row"><button class="btn good" data-act="jp-ok">✓ Correct</button><button class="btn bad" data-act="jp-no">✗ Wrong</button></div>`;
+        h+=`<p class="sub"><b style="color:${p.color}">${esc(p.name)}</b> answers for ${money(c.wager)}</p><div class="row"><button class="btn good" data-act="jp-ok">✓ Correct</button><button class="btn bad" data-act="jp-no">✗ Wrong</button>${c.peek?'':'<button class="btn alt" data-act="jp-peek">👁 Show answer first</button>'}</div>`;
       }else{
-        h+=`<p class="sub">Who buzzed in first? Tap their name.</p>`+pgrid('jp-sel',q=>(G.locked.has(q.id)?'dis':c.sel===q.id?'sel':''))+
-        `<div class="row"><button class="btn good" data-act="jp-ok" ${c.sel==null?'disabled':''}>✓ Correct</button><button class="btn bad" data-act="jp-no" ${c.sel==null?'disabled':''}>✗ Wrong</button><button class="btn alt" data-act="jp-reveal">Nobody — show answer</button></div>`;
+        const z=ROOM.st&&ROOM.st.buzz,by=z&&z.by,tm=by&&ROOM.st.teams&&by.team!=null?ROOM.st.teams[by.team]:null;
+        if(z&&z.on)h+=by?`<div class="buzzbanner got">⚡ <b style="color:${by.color}">${esc(by.name)}</b>${tm?` · Team ${esc(tm.name)}`:''} buzzed in first${by.ms!=null?` (${(by.ms/1000).toFixed(2)}s)`:''}! They say the answer out loud, then you mark it.</div>`:z.open?'<div class="buzzbanner open">🔔 Buzzers are OPEN: players buzz in on their phones…</div>':'<div class="buzzbanner">🔕 Buzzers are closed</div>';
+        h+=`<p class="sub">${z&&z.on?'Or tap a name yourself if someone can\'t buzz:':'Who buzzed in first? Tap their name.'}</p>`+pgrid('jp-sel',q=>(G.locked.has(q.id)?'dis':c.sel===q.id?'sel':''))+
+        `<div class="row"><button class="btn good" data-act="jp-ok" ${c.sel==null?'disabled':''}>✓ Correct</button><button class="btn bad" data-act="jp-no" ${c.sel==null?'disabled':''}>✗ Wrong</button>${c.peek?'':'<button class="btn alt" data-act="jp-peek">👁 Show answer first</button>'}<button class="btn alt" data-act="jp-reveal">Nobody — show answer</button></div>`;
       }
     }
     $('#view').innerHTML=h+'</div>';renderBoard();
@@ -775,24 +798,29 @@ const ACT={
     G.cur={ci,ri,k,dd:G.dd.has(k),sel:null,stage:'open',wager:0};G.locked=new Set();Snd.stop();
     if(G.cur.dd){G.cur.stage='wager';Snd.play('dd');}else Snd.play('pick');
     JP.clue();
+    if(G.cur.dd)JP.buzz('close');else JP.buzz('open',[]); // Daily Double: only the player in control answers, no buzzing
   },
   'jp-wager':()=>{const p=players[G.turn],max=Math.max(p.score,1000);let w=Math.round(+$('#wager').value/5)*5;w=Math.max(5,Math.min(max,w||5));G.cur.wager=w;G.cur.stage='open';Snd.play('reveal');JP.clue();},
   'jp-timer':()=>{Snd.loop('think');T.start(15,{onEnd:()=>{Snd.stop();Snd.play('timeup');}});},
-  'jp-sel':el=>{G.cur.sel=+el.dataset.id;T.stop();Snd.stop();Snd.play('buzz');JP.clue();},
+  'jp-sel':el=>{G.cur.sel=+el.dataset.id;T.stop();Snd.stop();Snd.play('buzz');JP.clue();JP.buzz('close');},
   'jp-ok':()=>{
     const c=G.cur,pid=c.dd?G.turn:c.sel;if(pid==null)return;const amt=c.dd?c.wager:JP.cl().v;
-    players[pid].score+=amt;G.turn=pid;c.stage='done';c.note=`${players[pid].name}  +${money(amt)}`;T.stop();Snd.stop();Snd.play('correct');JP.clue();
+    players[pid].score+=amt;G.turn=pid;c.stage='done';c.note=`${players[pid].name}  +${money(amt)}`;T.stop();Snd.stop();Snd.play('correct');JP.clue();JP.buzz('close');
   },
   'jp-no':()=>{
     const c=G.cur,pid=c.dd?G.turn:c.sel;if(pid==null)return;const amt=c.dd?c.wager:JP.cl().v;
-    players[pid].score-=amt;G.locked.add(pid);c.sel=null;T.stop();Snd.stop();Snd.play('wrong');
+    players[pid].score-=amt;c.sel=null;T.stop();Snd.stop();Snd.play('wrong');
+    // with teams, a wrong answer locks out the whole team for this clue; otherwise just that player
+    const out=ROOM.st&&ROOM.st.teams&&players[pid].team!=null?players.filter(p=>p.team===players[pid].team).map(p=>p.id):[pid];
+    out.forEach(i=>G.locked.add(i));
     c.note=`${players[pid].name}  -${money(amt)}`;
-    if(c.dd||G.locked.size>=players.length)c.stage='done';
+    if(c.dd||c.peek||G.locked.size>=players.length){c.stage='done';JP.buzz('close');}else JP.buzz('open',[...G.locked]); // the others can buzz again (not once the answer has been shown)
     JP.clue();
   },
-  'jp-reveal':()=>{G.cur.stage='done';G.cur.note='';T.stop();Snd.stop();Snd.play('reveal');JP.clue();},
+  'jp-peek':()=>{G.cur.peek=true;T.stop();Snd.stop();Snd.play('reveal');JP.buzz('hold');JP.clue();}, // show the answer, keep the buzzed-in player selected, then mark it
+  'jp-reveal':()=>{G.cur.stage='done';G.cur.note='';T.stop();Snd.stop();Snd.play('reveal');JP.clue();JP.buzz('close');},
   'jp-back':()=>{G.used.add(G.cur.k);G.cur=null;JP.board();},
-  'jp-final':()=>{if(confirm('Go to the Final Round now?'))JP.final();},
+  'jp-final':()=>{if(confirm('Go to the Final Round now?')){JP.buzz('off');JP.final();}},
   'jp-fclue':()=>{
     document.querySelectorAll('.wcell input').forEach(i=>{const p=players[+i.dataset.id];G.f.w[p.id]=Math.max(0,Math.min(Math.max(0,p.score),Math.round(+i.value||0)));});
     G.f.stage='clue';Snd.loop('think');JP.final();T.start(30,{tickFrom:5,onEnd:()=>{Snd.stop();Snd.play('timeup');}});
@@ -800,7 +828,7 @@ const ACT={
   'jp-freveal':()=>{T.stop();Snd.stop();Snd.play('reveal');G.f.stage='reveal';JP.final();},
   'jp-ftog':el=>{const id=+el.dataset.id;G.f.res[id]=((G.f.res[id]||0)+1)%3;JP.final();},
   'jp-fdone':()=>{try{const a=JSON.parse(localStorage.getItem('gn.jp.played')||'[]');if(!a.includes(G.bi))a.push(G.bi);localStorage.setItem('gn.jp.played',JSON.stringify(a));}catch(e){}
-    players.forEach(p=>{const r=G.f.res[p.id]||0,w=G.f.w[p.id]||0;if(r===1)p.score+=w;else if(r===2)p.score-=w;});finish('FINAL SCORES');},
+    players.forEach(p=>{const r=G.f.res[p.id]||0,w=G.f.w[p.id]||0;if(r===1)p.score+=w;else if(r===2)p.score-=w;});JP.buzz('off');finish('FINAL SCORES');},
 
   /* globe trotters (live) */
   'gt-reveal':()=>ROOM.post('/api/host/reveal'),

@@ -207,6 +207,7 @@ export class Game extends DurableObject {
       code, hostToken, phase: 'lobby',
       settings: { rounds: 10, seconds: 45, category: 'All', max: 20, teams: 0, game: 'globetrotters' },
       players: {}, rounds: [], idx: -1, deadline: 0, results: null,
+      buzz: { on: false, open: false, locked: [], by: null, seq: 0, openedAt: 0 },
     };
     await this.save();
   }
@@ -219,6 +220,8 @@ export class Game extends DurableObject {
 
   /* ---- state helpers ---- */
   players() { return Object.values(this.r.players); }
+  // The Big Board buzzers (the board itself is run from the host screen; the server only referees who buzzed in FIRST).
+  buzz() { return this.r.buzz || (this.r.buzz = { on: false, open: false, locked: [], by: null, seq: 0, openedAt: 0 }); }
   connCount(pid) { let n = 0; for (const c of this.clients) if (c.role === 'player' && c.pid === pid) n++; return n; }
   connected() { return this.players().filter(p => this.connCount(p.id) > 0); }
   cur() { return this.r.rounds[this.r.idx]; }
@@ -254,6 +257,7 @@ export class Game extends DurableObject {
   view(role, pid) {
     const r = this.r;
     const v = { now: Date.now(), phase: r.phase, code: r.code, settings: r.settings, players: this.playerList(), teams: this.teamList(), idx: r.idx, total: r.rounds.length, deadline: r.deadline };
+    if (r.settings.game === 'jeopardy') { const z = this.buzz(); v.buzz = { on: z.on, open: z.open, locked: z.locked, by: z.by, seq: z.seq }; }
     if (r.phase === 'guess' || r.phase === 'reveal') v.prompt = this.promptOf(this.cur());
     if (r.phase === 'reveal') {
       const pl = this.cur();
@@ -382,6 +386,16 @@ export class Game extends DurableObject {
       this.broadcast();
       return json({ pid: id, token, name: n, code: r.code });
     }
+    if (act === '/api/buzz') { // a player buzzes in: the server decides who was first (requests are handled one at a time, in arrival order)
+      const p = r.players[String(b.pid)];
+      if (!p || p.token !== b.token) return json({ error: 'bad player' }, 403);
+      const z = this.buzz();
+      if (!z.on || !z.open || z.by || z.locked.includes(p.id)) return json({ ok: false, first: false });
+      z.open = false;
+      z.by = { id: p.id, name: p.name, color: p.color, team: p.team, ms: Math.max(0, Date.now() - (z.openedAt || Date.now())) };
+      this.broadcast();
+      return json({ ok: true, first: true });
+    }
     if (act === '/api/guess') {
       const p = r.players[String(b.pid)];
       if (!p || p.token !== b.token) return json({ error: 'bad player' }, 403);
@@ -433,10 +447,20 @@ export class Game extends DurableObject {
         r.rounds = shuffle(pool).slice(0, s.rounds); r.opts = r.rounds.map(buildOptions); r.idx = -1;
         await this.startRound(); return json({ ok: true });
       }
+      if (a === 'buzz') { // the host controls the buzzers for The Big Board: on / open (with who is locked out) / close / off
+        if (s.game !== 'jeopardy') return json({ error: 'Buzzers are only for The Big Board.' }, 400);
+        const z = this.buzz(), cmd = String(b.cmd || '');
+        if (cmd === 'on' || cmd === 'off') r.buzz = { on: cmd === 'on', open: false, locked: [], by: null, seq: z.seq + 1, openedAt: 0 };
+        else if (cmd === 'open') { z.on = true; z.open = true; z.by = null; z.locked = (Array.isArray(b.locked) ? b.locked : []).map(String).filter(id => r.players[id]); z.seq++; z.openedAt = Date.now(); }
+        else if (cmd === 'close') { z.open = false; z.by = null; z.locked = []; z.seq++; }
+        else if (cmd === 'hold') { z.open = false; z.seq++; } // buzzers closed, but the player who buzzed in stays shown until the host marks it
+        else return json({ error: 'bad command' }, 400);
+        this.broadcast(); return json({ ok: true });
+      }
       if (a === 'reveal') { this.endRound(); return json({ ok: true }); }
       if (a === 'next' && r.phase === 'reveal') { await this.startRound(); return json({ ok: true }); }
       if (a === 'again') { // back to the lobby from any phase (also used when the host leaves a game mid-round)
-        r.phase = 'lobby'; r.idx = -1; r.rounds = []; r.results = null; r.deadline = 0;
+        r.phase = 'lobby'; r.idx = -1; r.rounds = []; r.results = null; r.deadline = 0; r.buzz = { on: false, open: false, locked: [], by: null, seq: this.buzz().seq + 1, openedAt: 0 };
         for (const p of this.players()) { p.score = 0; p.guess = null; p.choice = null; p.answer = null; p.ms = null; p.locked = false; p.last = null; }
         this.broadcast(); return json({ ok: true });
       }
@@ -449,7 +473,7 @@ export class Game extends DurableObject {
 /* ======================================================================== */
 /* Worker: routing                                                          */
 /* ======================================================================== */
-const GAME_PATHS = /^\/api\/(events|join|guess|host\/(settings|start|reveal|next|again|teams))$/;
+const GAME_PATHS = /^\/api\/(events|join|guess|buzz|host\/(settings|start|reveal|next|again|teams|buzz))$/;
 const authStub = env => env.AUTH.get(env.AUTH.idFromName('auth'));
 const gameStub = (env, code) => env.GAME.get(env.GAME.idFromName(code));
 
