@@ -24,12 +24,21 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(0,0,20,.6);font-family:Impact,sans-serif;letter-spacing:1px;color:var(--gold);padding-top:max(8px,env(safe-area-inset-top))}
 .bar{height:8px;background:rgba(255,255,255,.15)}
 .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--bad),var(--gold),var(--good));background-size:300% 100%}
-.prompt{display:flex;gap:10px;align-items:center;padding:8px 12px;background:rgba(0,0,40,.7);min-height:56px}
-.prompt img{height:84px;max-width:42vw;object-fit:cover;border-radius:8px;border:2px solid #fff}
+.prompt{display:flex;flex:none;flex-direction:column;gap:4px;padding:6px 10px;background:rgba(0,0,40,.7);min-height:56px}
+.top,.bar{flex:none}
+.prompt .photo{width:100%;height:clamp(120px,28vh,330px);flex:none;object-fit:contain;background:#000;border-radius:10px;border:2px solid #fff;cursor:zoom-in;display:block}
+.prompt .cap{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.prompt .cap em{margin-left:auto;font-style:normal;color:var(--mute);font-size:12px}
 .prompt h2{margin:0;font-size:clamp(18px,5vw,26px);line-height:1.15}
+.prompt .cap h2{font-size:clamp(16px,4.4vw,20px)}
+#zoom{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.95);align-items:center;justify-content:center;cursor:zoom-out}
+#zoom.on{display:flex}
+#zoom img{max-width:100%;max-height:100%;object-fit:contain}
 .prompt small{color:var(--gold);letter-spacing:1px;font-weight:700}
-#map{flex:1;min-height:0;background:#aad3df}
-.foot{padding:10px 12px max(10px,env(safe-area-inset-bottom));background:rgba(0,0,20,.85)}
+#map{flex:1;min-height:150px;background:#aad3df}
+.foot{flex:none;padding:8px 12px max(8px,env(safe-area-inset-bottom));background:rgba(0,0,20,.85)}
+.foot .btn{font-size:19px;padding:10px 14px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-height:620px){#map{min-height:105px}.prompt .photo{height:clamp(110px,27vh,330px)}}
 .res{text-align:center}
 .res .big{font-family:Impact,sans-serif;font-size:56px;color:var(--gold);line-height:1;animation:pop .5s}
 .res .sm{color:var(--mute);margin-top:4px}
@@ -37,9 +46,9 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .rows{display:grid;gap:5px;max-width:420px;margin:12px auto;width:100%}
 .rows div{display:flex;justify-content:space-between;background:rgba(255,255,255,.1);border-radius:8px;padding:8px 12px}
 .rows .me{background:var(--gold);color:#000;font-weight:800}
-#opts{display:none;grid-template-columns:1fr 1fr;gap:6px;padding:6px 10px;background:rgba(0,0,40,.7)}
+#opts{display:none;flex:none;grid-template-columns:1fr 1fr;gap:5px;padding:5px 10px;background:rgba(0,0,40,.7)}
 #opts.on{display:grid}
-#opts button{font-family:inherit;font-weight:700;font-size:clamp(13px,3.6vw,16px);line-height:1.15;color:#fff;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);border-radius:10px;padding:8px 6px;min-height:44px}
+#opts button{font-family:inherit;font-weight:700;font-size:clamp(13px,3.6vw,16px);line-height:1.15;color:#fff;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);border-radius:10px;padding:6px 6px;min-height:42px}
 #opts button.sel{background:var(--gold);color:#000;border-color:#fff}
 #opts button:disabled{opacity:.55}
 #opts button.sel:disabled{opacity:1}
@@ -77,6 +86,8 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
   <div id="map"></div>
   <div class="foot" id="foot"></div>
 </section>
+
+<div id="zoom" onclick="this.classList.remove('on')"><img alt=""></div>
 
 <section id="s-end"><div class="center">
   <h1 class="logo" style="font-size:36px">GAME OVER</h1>
@@ -117,8 +128,9 @@ function connect(){
 
 function ensureMap(){
   if(map)return;
-  map=L.map('map',{minZoom:1,worldCopyJump:true,zoomControl:true,attributionControl:false}).setView([20,10],2);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
+  map=L.map('map',{minZoom:1,worldCopyJump:true,zoomControl:true,attributionControl:true}).setView([20,10],2);
+  if(map.attributionControl)map.attributionControl.setPrefix(false); // keep the OpenStreetMap credit, drop the "Leaflet" prefix to save room
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(map);
   layer=L.layerGroup().addTo(map);
   map.on('click',e=>{
     if(!st||st.phase!=='guess'||(st.me&&st.me.locked))return;
@@ -147,7 +159,7 @@ function renderFoot(){
   const f=$('#foot');
   if(st.phase==='guess'){
     const locked=st.me&&st.me.locked,ready=pin&&choice!=null;
-    const label=ready?'Lock in guess':choice==null&&!pin?'Pick the place, then drop a pin':choice==null?'Now pick what the place is ↑':'Now tap the map to drop your pin';
+    const label=ready?'Lock in guess':choice==null&&!pin?'Pick a name + drop a pin':choice==null?'Now pick the name ↑':'Now tap the map to drop a pin';
     f.innerHTML=locked?`<button class="btn" disabled>Locked in ✓ Waiting for others…</button>`
       :`<button class="btn good" id="lock" ${ready?'':'disabled'}>${label}</button>`;
     const b=$('#lock');if(b)b.onclick=()=>{
@@ -185,7 +197,7 @@ function render(){
     if(view!==key){
       view=key;pin=null;choice=st.me.choice==null?null:st.me.choice;layer.clearLayers();map.setView([20,10],2);
       const p=st.prompt;
-      $('#prompt').innerHTML=(p.image?`<img src="${esc(p.image)}" alt="" onerror="this.remove()">`:'')+`<div><small>${esc(p.category.toUpperCase())}</small><h2>${p.name?esc(p.name):'What is this place?'}</h2></div>`;
+      $('#prompt').innerHTML=(p.image?`<img class="photo" src="${esc(p.image)}" alt="" onerror="this.remove();map&&map.invalidateSize()" onload="map&&map.invalidateSize()" onclick="$('#zoom img').src=this.src;$('#zoom').classList.add('on')">`:'')+`<div class="cap"><small>${esc(p.category.toUpperCase())}</small><h2>${p.name?esc(p.name):'What is this place?'}</h2>${p.image?'<em>tap the photo to enlarge</em>':''}</div>`;
       drawOptions();
       if(st.me.guess)setPin(st.me.guess.lat,st.me.guess.lon);
       clearInterval(iv);

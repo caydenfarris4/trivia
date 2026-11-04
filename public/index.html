@@ -120,7 +120,7 @@ input[type=range]{width:100%;accent-color:var(--gold);margin:10px 0}
 .settings label{display:flex;flex-direction:column;gap:3px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--mute);font-weight:700}
 .settings label.chk{flex-direction:row;align-items:center;gap:8px;align-self:flex-end;padding-bottom:8px}
 .settings select{font-size:16px;padding:8px;border-radius:8px;background:#000a;color:#fff;border:2px solid var(--gold)}
-.gtimg{max-height:38vh;max-width:100%;border-radius:14px;border:4px solid #fff;margin:6px auto;display:block;box-shadow:0 8px 30px #000a}
+.gtimg{max-height:46vh;max-width:100%;border-radius:14px;border:4px solid #fff;margin:6px auto;display:block;box-shadow:0 8px 30px #000a}
 .gtrev{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:6px}
 #gtmap{height:min(58vh,560px);border-radius:14px;border:3px solid #fff;background:#aad3df}
 .gtlist{max-height:min(58vh,560px);overflow:auto;display:grid;gap:5px;align-content:start}
@@ -632,8 +632,9 @@ const GT={
       ${s.results.slice().sort((x,y)=>y.pts-x.pts).map((r,i)=>`<div class="rrow" style="--c:${r.color}"><b>${i+1}</b><span>${esc(r.name)} ${r.correct?'✅':'❌'}</span><em>${fk(r.dist)}</em><strong>+${r.pts.toLocaleString()}</strong></div>`).join('')}</div></div>
       <div class="row"><button class="btn good" data-act="gt-next">${s.idx+1>=s.total?'Final Scores':'Next Round ▸'}</button></div></div>`;
     if(typeof L==='undefined'){$('#gtmap').innerHTML='<p class="sub">Map needs internet.</p>';return;}
-    const m=GT.map=L.map('gtmap',{worldCopyJump:true,minZoom:1,attributionControl:false}).setView([20,10],2);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(m);
+    const m=GT.map=L.map('gtmap',{worldCopyJump:true,minZoom:1,attributionControl:true}).setView([20,10],2);
+    if(m.attributionControl)m.attributionControl.setPrefix(false);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'}).addTo(m);
     const pts=[[a.lat,a.lon]];
     L.circle([a.lat,a.lon],{radius:Math.max(a.radius,.3)*1000,color:'#2fd573',weight:2,fillOpacity:.15}).addTo(m);
     L.marker([a.lat,a.lon],{icon:L.divIcon({className:'',html:'<div class="gtstar">⭐</div>',iconSize:[34,34],iconAnchor:[17,17]})}).addTo(m);

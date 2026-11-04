@@ -417,7 +417,8 @@ async function pageFromAssets(env, request, path, isHtml) {
   const h = new Headers(res.headers);
   h.set('cache-control', 'no-cache');
   h.set('x-content-type-options', 'nosniff');
-  if (isHtml) { h.set('x-frame-options', 'DENY'); h.set('referrer-policy', 'same-origin'); }
+  // The Referrer-Policy must NOT be same-origin/no-referrer: OpenStreetMap's tile servers block map requests that carry no Referer.
+  if (isHtml) { h.set('x-frame-options', 'DENY'); h.set('referrer-policy', 'strict-origin-when-cross-origin'); }
   return new Response(res.body, { status: 200, headers: h });
 }
 
