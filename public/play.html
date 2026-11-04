@@ -60,6 +60,12 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .qopt.truth{opacity:.55}
 #qres .big{font-family:Impact,sans-serif;font-size:48px;color:var(--gold);line-height:1;animation:pop .5s}
 #qres .line{margin-top:4px}
+#s-buzz .center{gap:12px}
+.buzzbtn{width:min(76vw,330px);aspect-ratio:1;border-radius:50%;border:10px solid #fff;background:radial-gradient(circle at 35% 30%,#ff8c98,#e0334a 60%,#8f1226);color:#fff;font-family:Impact,"Arial Black",sans-serif;font-size:clamp(44px,15vw,88px);letter-spacing:3px;box-shadow:0 12px 0 #5a0b18,0 0 50px rgba(255,77,94,.5);touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;margin:6px auto}
+.buzzbtn:active:not(:disabled){transform:translateY(8px);box-shadow:0 4px 0 #5a0b18,0 0 50px rgba(255,77,94,.5)}
+.buzzbtn:disabled{filter:grayscale(1) brightness(.5);box-shadow:0 6px 0 #222}
+.buzzbtn.won{background:radial-gradient(circle at 35% 30%,#8cf5b5,#1fb35a 60%,#0b7a37);box-shadow:0 12px 0 #064d22,0 0 60px rgba(47,213,115,.6);filter:none}
+#bstatus{font-size:22px;font-weight:800;min-height:3em}
 #opts{display:none;flex:none;grid-template-columns:1fr 1fr;gap:5px;padding:5px 10px;background:rgba(0,0,40,.7)}
 #opts.on{display:grid}
 #opts button{font-family:inherit;font-weight:700;font-size:clamp(13px,3.6vw,16px);line-height:1.15;color:#fff;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);border-radius:10px;padding:6px 6px;min-height:42px}
@@ -102,6 +108,14 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 </section>
 
 <div id="zoom" onclick="this.classList.remove('on')"><img alt=""></div>
+
+<section id="s-buzz"><div class="center">
+  <div id="bgame" class="sub" style="font-size:18px;color:#fff">🎯 The Big Board</div>
+  <div id="bteam"></div>
+  <button id="buzzbtn" class="buzzbtn" disabled>BUZZ</button>
+  <div id="bstatus"></div>
+  <div class="sub" id="bname"></div>
+</div></section>
 
 <section id="s-quiz">
   <div class="top"><span id="qrnd"></span><span id="qtm"></span></div>
@@ -242,10 +256,43 @@ function renderQuiz(){
   }
 }
 
+/* ---------- The Big Board: buzz in on your phone (the server decides who was first) ---------- */
+let buzzSeen='';
+function renderBuzz(){
+  show('s-buzz');
+  const z=st.buzz,me2=st.me,t=myTeam(),btn=$('#buzzbtn');
+  $('#bteam').innerHTML=t?`<span class="tbadge" style="background:${t.color}">Team ${esc(t.name)}</span>`:'';
+  $('#bname').textContent=me2.name;
+  const locked=z.locked.includes(me2.id),mine=!!z.by&&z.by.id===me2.id,other=!!z.by&&!mine;
+  btn.disabled=!(z.open&&!z.by&&!locked);
+  btn.classList.toggle('won',mine);
+  btn.textContent=mine?'YOU!':locked?'OUT':'BUZZ';
+  const el=$('#bstatus');
+  if(mine){el.style.color='var(--good)';el.textContent='⚡ You buzzed in first! Say your answer OUT LOUD.';}
+  else if(other){el.style.color='#fff';el.textContent=`${z.by.name} buzzed in first.`;}
+  else if(locked){el.style.color='var(--bad)';el.textContent=st.teams?'🔒 Your team is locked out for this clue.':'🔒 You are locked out for this clue.';}
+  else if(z.open){el.style.color='var(--gold)';el.textContent='BUZZ IN NOW!';}
+  else{el.style.color='var(--mute)';el.textContent='Waiting for the next clue…';}
+  const key=z.seq+':'+(mine?'m':'');
+  if(mine&&buzzSeen!==key){try{navigator.vibrate&&navigator.vibrate([60,40,60]);}catch(e){}}
+  buzzSeen=key;
+}
+(function(){
+  const btn=document.getElementById('buzzbtn');
+  btn.onpointerdown=e=>{ // pointerdown (not click) so there is no tap delay
+    e.preventDefault();
+    if(btn.disabled||!me)return;
+    btn.disabled=true;$('#bstatus').textContent='Buzzing…';
+    try{navigator.vibrate&&navigator.vibrate(30);}catch(x){}
+    fetch('/api/buzz?code='+encodeURIComponent(me.code||''),{method:'POST',body:JSON.stringify({pid:me.pid,token:me.token})}).catch(()=>{});
+  };
+})();
+
 function render(){
   if(st.phase==='closed'){try{localStorage.removeItem('gt.me');}catch(e){}me=null;if(es)es.close();show('s-join');$('#err').textContent='That game ended. Join a new one.';return;}
   if(!st.me){show('s-join');return;}
   me.color=st.me.color;
+  if(st.phase==='lobby'&&st.settings&&st.settings.game==='jeopardy'&&st.buzz&&st.buzz.on){view='buzz';renderBuzz();return;}
   if(st.phase==='lobby'){view='lobby';show('s-wait');$('#wname').textContent=st.me.name;$('#wcount').textContent=st.players.length+' player'+(st.players.length===1?'':'s')+' joined';
     const gm=st.settings&&st.settings.game;$('#wgame').textContent=GAME_NAMES[gm]?'Tonight: '+GAME_NAMES[gm]:'';
     $('#wsub').textContent=gm==='globetrotters'||gm==='spotthefake'?'Look at the big screen. The host will start the game.':'Look at the big screen: the host runs this game from there. Keep this page open!';
