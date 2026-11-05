@@ -2,7 +2,8 @@
 Finds a Wikipedia/Wikimedia Commons lead photo for every place in globetrotters_bank.csv.
 No API key needed. Run locally:  pip install requests   then   python fetch_images.py
 Writes globetrotters_images.csv with a candidate image URL + license + author per place.
-ALWAYS eyeball the results: the top search hit is usually right, but not always.
+ALWAYS eyeball the results: the top search hit is usually right, but not always
+(flags, maps and non-JPEGs are skipped automatically; the page still needs a human look).
 """
 import csv, re, time, requests
 
@@ -22,6 +23,26 @@ def lead_image(query):
     for p in pages.values():
         return p.get("title"), p.get("pageimage")
     return None, None
+
+BAD_NAME = re.compile(r"flag|map|locator|location|coat_of_arms|logo|\.svg|\.png|\.gif|\.tif", re.I)
+
+def good_photo(filename):
+    """The top Wikipedia hit's lead image is sometimes a flag or a map: reject those."""
+    return bool(filename) and not BAD_NAME.search(filename)
+
+def commons_photo(query):
+    """Fallback: best-matching big JPEG on Commons for the place (still eyeball it!)."""
+    r = requests.get(COMMONS, headers=HEADERS, timeout=30, params={
+        "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
+        "gsrsearch": query + " filetype:bitmap", "gsrlimit": 15,
+        "prop": "imageinfo", "iiprop": "size",
+    })
+    pages = sorted(r.json().get("query", {}).get("pages", {}).values(), key=lambda p: p["index"])
+    for p in pages:
+        name = p["title"][5:]
+        if re.search(r"\.jpe?g$", name, re.I) and good_photo(name) and p["imageinfo"][0]["width"] >= 1400:
+            return name
+    return None
 
 def file_info(filename):
     """Ask Commons for the file's URL (1600px wide), license, and author."""
@@ -52,6 +73,8 @@ with open("globetrotters_images.csv", "w", newline="", encoding="utf-8") as f:
         try:
             title, fname = lead_image(f'{row["name"]} {row["country"]}')
             rec["wiki_title"] = title or ""
+            if not good_photo(fname):  # flag/map/SVG/etc. -> look for a real photo instead
+                fname = commons_photo(row["name"])
             if fname:
                 rec.update(file_info(fname))
         except Exception as e:

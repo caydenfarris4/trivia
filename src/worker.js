@@ -205,7 +205,7 @@ export class Game extends DurableObject {
     await this.close();
     this.r = {
       code, hostToken, phase: 'lobby',
-      settings: { rounds: 10, seconds: 45, category: 'All', max: 20, teams: 0, game: 'globetrotters' },
+      settings: { rounds: 10, seconds: 45, category: 'All', max: 20, teams: 0, game: 'globetrotters', answerSeconds: 15 },
       players: {}, rounds: [], idx: -1, deadline: 0, results: null,
       buzz: { on: false, open: false, locked: [], by: null, seq: 0, openedAt: 0 },
     };
@@ -257,7 +257,7 @@ export class Game extends DurableObject {
   view(role, pid) {
     const r = this.r;
     const v = { now: Date.now(), phase: r.phase, code: r.code, settings: r.settings, players: this.playerList(), teams: this.teamList(), idx: r.idx, total: r.rounds.length, deadline: r.deadline };
-    if (r.settings.game === 'jeopardy') { const z = this.buzz(); v.buzz = { on: z.on, open: z.open, locked: z.locked, by: z.by, seq: z.seq }; }
+    if (r.settings.game === 'jeopardy') { const z = this.buzz(); v.buzz = { on: z.on, open: z.open, locked: z.locked, by: z.by, seq: z.seq, deadline: z.deadline || 0, secs: r.settings.answerSeconds || 15 }; }
     if (r.phase === 'guess' || r.phase === 'reveal') v.prompt = this.promptOf(this.cur());
     if (r.phase === 'reveal') {
       const pl = this.cur();
@@ -391,7 +391,7 @@ export class Game extends DurableObject {
       if (!p || p.token !== b.token) return json({ error: 'bad player' }, 403);
       const z = this.buzz();
       if (!z.on || !z.open || z.by || z.locked.includes(p.id)) return json({ ok: false, first: false });
-      z.open = false;
+      z.open = false; z.deadline = Date.now() + (r.settings.answerSeconds || 15) * 1000; // the answer timer starts at the first buzz
       z.by = { id: p.id, name: p.name, color: p.color, team: p.team, ms: Math.max(0, Date.now() - (z.openedAt || Date.now())) };
       this.broadcast();
       return json({ ok: true, first: true });
@@ -426,6 +426,7 @@ export class Game extends DurableObject {
         if ('seconds' in b) s.seconds = clamp(Math.round(+b.seconds) || 45, 15, 180);
         if ('category' in b && this.categories().includes(b.category)) s.category = b.category;
         if ('max' in b) s.max = clamp(Math.round(+b.max) || 20, 4, 20);
+        if ('answerSeconds' in b) s.answerSeconds = clamp(Math.round(+b.answerSeconds) || 15, 3, 60); // The Big Board: seconds to answer after buzzing in
         if ('teams' in b) { const t = Math.round(+b.teams) || 0; s.teams = t < 2 ? 0 : clamp(t, 2, 6); this.assignTeams(); }
         this.broadcast(); return json({ ok: true });
       }
@@ -451,9 +452,9 @@ export class Game extends DurableObject {
         if (s.game !== 'jeopardy') return json({ error: 'Buzzers are only for The Big Board.' }, 400);
         const z = this.buzz(), cmd = String(b.cmd || '');
         if (cmd === 'on' || cmd === 'off') r.buzz = { on: cmd === 'on', open: false, locked: [], by: null, seq: z.seq + 1, openedAt: 0 };
-        else if (cmd === 'open') { z.on = true; z.open = true; z.by = null; z.locked = (Array.isArray(b.locked) ? b.locked : []).map(String).filter(id => r.players[id]); z.seq++; z.openedAt = Date.now(); }
-        else if (cmd === 'close') { z.open = false; z.by = null; z.locked = []; z.seq++; }
-        else if (cmd === 'hold') { z.open = false; z.seq++; } // buzzers closed, but the player who buzzed in stays shown until the host marks it
+        else if (cmd === 'open') { z.on = true; z.open = true; z.by = null; z.deadline = 0; z.locked = (Array.isArray(b.locked) ? b.locked : []).map(String).filter(id => r.players[id]); z.seq++; z.openedAt = Date.now(); }
+        else if (cmd === 'close') { z.open = false; z.by = null; z.locked = []; z.deadline = 0; z.seq++; }
+        else if (cmd === 'hold') { z.open = false; z.deadline = 0; z.seq++; } // buzzers closed, but the player who buzzed in stays shown until the host marks it
         else return json({ error: 'bad command' }, 400);
         this.broadcast(); return json({ ok: true });
       }
