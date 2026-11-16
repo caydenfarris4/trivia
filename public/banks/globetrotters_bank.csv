@@ -99,3 +99,8 @@ id,name,country,continent,category,lat,lon,radius_km,difficulty,reveal_blurb,ima
 98,Denali,USA (Alaska),North America,Mountain & Range,63.0692,-151.007,50,medium,"North America's tallest peak at about 6,190 meters.",Denali USA (Alaska) photo,,
 99,Lake Louise (Banff),Canada,North America,Mountain & Range,51.4254,-116.1773,30,medium,A glacier-fed lake the color of milky turquoise.,Lake Louise (Banff) Canada photo,,
 100,Annapurna Range,Nepal,Asia,Mountain & Range,28.596,83.8203,50,hard,A range with one of the world's most famous trekking circuits.,Annapurna Range Nepal photo,,
+101,Lemaire Channel,Antarctica,Antarctica,Natural Wonder,-65.09,-63.97,10,hard,"Nicknamed the ""Kodak Gap"", this iceberg-filled strait is hemmed in by steep cliffs and is a top Antarctic tourist stop.",Lemaire Channel Antarctica photo,,
+102,Moeraki Boulders,New Zealand,Oceania,Beach & Coast,-45.3453,170.8261,3,medium,"Huge, almost perfectly round boulders lie scattered along Koekohe Beach; the biggest are around 2 m across.",Moeraki Boulders New Zealand photo,,
+103,Tsingy de Bemaraha,Madagascar,Africa,Natural Wonder,-18.85,44.74,25,hard,"A maze of razor-sharp limestone needles; the Malagasy word tsingy is often translated as ""where one cannot walk barefoot"".",Tsingy de Bemaraha Madagascar photo,,
+104,Ait Benhaddou,Morocco,Africa,Landmark,31.0472,-7.1289,2,medium,This mud-brick fortified village on an old Sahara caravan route has starred in films like Gladiator.,Ait Benhaddou Morocco photo,,
+105,Zhangye Danxia,China,Asia,Natural Wonder,38.9156,100.1332,15,hard,"Hills striped in red, orange and yellow by layers of sandstone and minerals, uplifted and eroded over millions of years.",Zhangye Danxia China photo,,
