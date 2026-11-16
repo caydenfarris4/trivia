@@ -1,4 +1,4 @@
-// THE BIG BOARD (Jeopardy-style) — question bank. Four full boards, each with its own Final round.
+// THE BIG BOARD (Jeopardy-style) — question bank. Eight full boards, each with its own Final round: four from the owner's CSV, then two trivia-heavy and two family boards for Thanksgiving.
 // Source: jeopardy_bank (1).csv. To add a board, copy one of the objects below and edit it.
 //
 // Format:
@@ -649,6 +649,650 @@ window.BANKS.jeopardy = { boards: [
    "category": "Fake News",
    "q": "This 1938 Orson Welles radio broadcast was reported to have caused mass panic, though historians say that was exaggerated.",
    "a": "The War of the Worlds"
+  }
+ },
+ {
+  "name": "World Tour: History & Geography",
+  "dailyDoubles": 1,
+  "categories": [
+   {
+    "name": "Ancient Worlds",
+    "clues": [
+     {
+      "v": 200,
+      "q": "The tomb of this young Egyptian pharaoh, found almost intact in 1922, held a famous gold funeral mask.",
+      "a": "Tutankhamun (King Tut)"
+     },
+     {
+      "v": 400,
+      "q": "This Greek city-state, famous for its disciplined warriors, fought Athens in the Peloponnesian War.",
+      "a": "Sparta"
+     },
+     {
+      "v": 600,
+      "q": "This Carthaginian general marched war elephants across the Alps to attack Rome.",
+      "a": "Hannibal"
+     },
+     {
+      "v": 800,
+      "q": "Found in 1799, this slab with the same text in three scripts let Champollion decode Egyptian hieroglyphs.",
+      "a": "The Rosetta Stone"
+     },
+     {
+      "v": 1000,
+      "q": "Pressed into clay with a reed stylus, this wedge-shaped writing system came from ancient Mesopotamia.",
+      "a": "Cuneiform"
+     }
+    ]
+   },
+   {
+    "name": "U.S. History",
+    "clues": [
+     {
+      "v": 200,
+      "q": "He was the first President of the United States.",
+      "a": "George Washington"
+     },
+     {
+      "v": 400,
+      "q": "This 1803 deal with France roughly doubled the size of the United States.",
+      "a": "The Louisiana Purchase"
+     },
+     {
+      "v": 600,
+      "q": "\"Four score and seven years ago\" begins this famous 1863 speech by Abraham Lincoln.",
+      "a": "The Gettysburg Address"
+     },
+     {
+      "v": 800,
+      "q": "In 1869 the first transcontinental railroad was finished at Promontory Summit in this present-day state.",
+      "a": "Utah"
+     },
+     {
+      "v": 1000,
+      "q": "This 1848 treaty ended the Mexican-American War and gave the U.S. California and much of the Southwest.",
+      "a": "The Treaty of Guadalupe Hidalgo"
+     }
+    ]
+   },
+   {
+    "name": "Capitals & Rivers",
+    "clues": [
+     {
+      "v": 200,
+      "q": "This city is the capital of Canada.",
+      "a": "Ottawa"
+     },
+     {
+      "v": 400,
+      "q": "The Nile flows north and empties into this sea.",
+      "a": "The Mediterranean Sea"
+     },
+     {
+      "v": 600,
+      "q": "Not Sydney or Melbourne: this city is the capital of Australia.",
+      "a": "Canberra"
+     },
+     {
+      "v": 800,
+      "q": "Flowing through Russia to the Caspian Sea, this is the longest river in Europe.",
+      "a": "The Volga"
+     },
+     {
+      "v": 1000,
+      "q": "Renamed Nur-Sultan in 2019, this Kazakh capital got its original name back in 2022.",
+      "a": "Astana"
+     }
+    ]
+   },
+   {
+    "name": "Explorers & Expeditions",
+    "clues": [
+     {
+      "v": 200,
+      "q": "Columbus first reached the Americas in this year.",
+      "a": "1492"
+     },
+     {
+      "v": 400,
+      "q": "This president sent Lewis and Clark west to explore the Louisiana Territory.",
+      "a": "Thomas Jefferson"
+     },
+     {
+      "v": 600,
+      "q": "With Sherpa Tenzing Norgay, this New Zealander was first to summit Mount Everest in 1953.",
+      "a": "Sir Edmund Hillary"
+     },
+     {
+      "v": 800,
+      "q": "Ferdinand Magellan's expedition circled the globe, but he was killed in 1521 in this present-day country.",
+      "a": "The Philippines"
+     },
+     {
+      "v": 1000,
+      "q": "Ernest Shackleton's ship Endurance was trapped and crushed by ice in this Antarctic sea.",
+      "a": "The Weddell Sea"
+     }
+    ]
+   },
+   {
+    "name": "Wonders & Landmarks",
+    "clues": [
+     {
+      "v": 200,
+      "q": "The Statue of Liberty was a gift to the United States from this country.",
+      "a": "France"
+     },
+     {
+      "v": 400,
+      "q": "The mountaintop city of Machu Picchu was built by this empire.",
+      "a": "The Inca"
+     },
+     {
+      "v": 600,
+      "q": "The \"Rose-Red City\" of Petra, carved into sandstone cliffs, is in this country.",
+      "a": "Jordan"
+     },
+     {
+      "v": 800,
+      "q": "Once the center of the Khmer Empire, the temple complex Angkor Wat is in this country.",
+      "a": "Cambodia"
+     },
+     {
+      "v": 1000,
+      "q": "More than 11,000 years old, the carved stone pillars of Gobekli Tepe are among the oldest monumental structures known and are in this country.",
+      "a": "Turkey"
+     }
+    ]
+   }
+  ],
+  "final": {
+   "category": "Geography",
+   "q": "The only sea in the world with no coastline, it is bounded by ocean currents and named for its floating seaweed.",
+   "a": "The Sargasso Sea"
+  }
+ },
+ {
+  "name": "The Sports Page",
+  "dailyDoubles": 1,
+  "categories": [
+   {
+    "name": "Baseball",
+    "clues": [
+     {
+      "v": 200,
+      "q": "A regulation baseball game is scheduled for this many innings.",
+      "a": "Nine"
+     },
+     {
+      "v": 400,
+      "q": "The bases on a regulation baseball diamond are this many feet apart.",
+      "a": "90 feet"
+     },
+     {
+      "v": 600,
+      "q": "Babe Ruth began his major-league career as a pitcher for this Boston team.",
+      "a": "The Red Sox"
+     },
+     {
+      "v": 800,
+      "q": "In 1947 this player broke baseball's color barrier with the Brooklyn Dodgers.",
+      "a": "Jackie Robinson"
+     },
+     {
+      "v": 1000,
+      "q": "Lou Gehrig played 2,130 consecutive games for the Yankees, which earned him this durable nickname.",
+      "a": "The Iron Horse"
+     }
+    ]
+   },
+   {
+    "name": "Volleyball",
+    "clues": [
+     {
+      "v": 200,
+      "q": "In indoor volleyball, each team has this many players on the court at a time.",
+      "a": "Six"
+     },
+     {
+      "v": 400,
+      "q": "This specialist wears a different color jersey, plays only in the back row and cannot spike the ball.",
+      "a": "The libero"
+     },
+     {
+      "v": 600,
+      "q": "Beach volleyball is played with this many players per team.",
+      "a": "Two"
+     },
+     {
+      "v": 800,
+      "q": "William G. Morgan invented volleyball in 1895 as a gentler alternative to this sport.",
+      "a": "Basketball"
+     },
+     {
+      "v": 1000,
+      "q": "Volleyball's original name in 1895, which sounded like the racket sport badminton, was this.",
+      "a": "Mintonette"
+     }
+    ]
+   },
+   {
+    "name": "Olympics",
+    "clues": [
+     {
+      "v": 200,
+      "q": "The Olympic flag shows this many interlocking rings.",
+      "a": "Five"
+     },
+     {
+      "v": 400,
+      "q": "The ancient Olympic Games began in this country.",
+      "a": "Greece"
+     },
+     {
+      "v": 600,
+      "q": "In 2009 this Jamaican sprinter set the 100-meter world record of 9.58 seconds.",
+      "a": "Usain Bolt"
+     },
+     {
+      "v": 800,
+      "q": "The 1980 U.S. hockey team's upset of the Soviet Union is known as the \"Miracle on\" this.",
+      "a": "Ice"
+     },
+     {
+      "v": 1000,
+      "q": "In 1976 gymnast Nadia Comaneci scored the first perfect 10 in Olympic history in this Canadian city.",
+      "a": "Montreal"
+     }
+    ]
+   },
+   {
+    "name": "Football",
+    "clues": [
+     {
+      "v": 200,
+      "q": "A touchdown is worth this many points.",
+      "a": "Six"
+     },
+     {
+      "v": 400,
+      "q": "The Super Bowl trophy is named for this legendary Green Bay Packers coach.",
+      "a": "Vince Lombardi"
+     },
+     {
+      "v": 600,
+      "q": "In 1984 this school's football team finished a perfect season and was named national champion.",
+      "a": "BYU (Brigham Young University)"
+     },
+     {
+      "v": 800,
+      "q": "In 1972 this team became the only NFL team to go undefeated and win the Super Bowl.",
+      "a": "The Miami Dolphins"
+     },
+     {
+      "v": 1000,
+      "q": "A BYU alumnus and Hall of Fame quarterback, he threw a record six touchdowns in Super Bowl XXIX.",
+      "a": "Steve Young"
+     }
+    ]
+   },
+   {
+    "name": "Basketball",
+    "clues": [
+     {
+      "v": 200,
+      "q": "A regulation basketball hoop is this many feet above the floor.",
+      "a": "10 feet"
+     },
+     {
+      "v": 400,
+      "q": "This Chicago Bulls guard won six NBA championships in the 1990s.",
+      "a": "Michael Jordan"
+     },
+     {
+      "v": 600,
+      "q": "James Naismith first used these fruit containers as the goals when he invented basketball in 1891.",
+      "a": "Peach baskets"
+     },
+     {
+      "v": 800,
+      "q": "This power forward, nicknamed \"The Mailman,\" teamed with John Stockton to lead the Utah Jazz.",
+      "a": "Karl Malone"
+     },
+     {
+      "v": 1000,
+      "q": "In 1962, Wilt Chamberlain scored 100 points in a game against this team.",
+      "a": "The New York Knicks"
+     }
+    ]
+   }
+  ],
+  "final": {
+   "category": "Sports Nicknames",
+   "q": "Called \"The Great One,\" this hockey legend wore No. 99, which the NHL retired for every team.",
+   "a": "Wayne Gretzky"
+  }
+ },
+ {
+  "name": "Thanksgiving Table",
+  "dailyDoubles": 1,
+  "categories": [
+   {
+    "name": "The First Thanksgiving",
+    "clues": [
+     {
+      "v": 200,
+      "q": "In 1620 the Pilgrims sailed to America aboard this ship.",
+      "a": "The Mayflower"
+     },
+     {
+      "v": 400,
+      "q": "The Wampanoag taught the Pilgrims to plant this grain, which they grew with fish as fertilizer.",
+      "a": "Corn"
+     },
+     {
+      "v": 600,
+      "q": "In 1863 this president proclaimed a national day of Thanksgiving.",
+      "a": "Abraham Lincoln"
+     },
+     {
+      "v": 800,
+      "q": "In 1939 Franklin Roosevelt moved Thanksgiving a week earlier, and critics gave it this nickname.",
+      "a": "Franksgiving"
+     },
+     {
+      "v": 1000,
+      "q": "This magazine editor, who also wrote \"Mary Had a Little Lamb,\" campaigned for years for a national Thanksgiving holiday.",
+      "a": "Sarah Josepha Hale"
+     }
+    ]
+   },
+   {
+    "name": "Turkey Talk",
+    "clues": [
+     {
+      "v": 200,
+      "q": "A male turkey makes this sound.",
+      "a": "Gobble"
+     },
+     {
+      "v": 400,
+      "q": "A male turkey is a tom; a female turkey is called this.",
+      "a": "A hen"
+     },
+     {
+      "v": 600,
+      "q": "The loose red skin hanging from a turkey's neck is called this.",
+      "a": "The wattle"
+     },
+     {
+      "v": 800,
+      "q": "The fleshy flap that hangs over a turkey's beak is called this.",
+      "a": "The snood"
+     },
+     {
+      "v": 1000,
+      "q": "Baby turkeys are called this.",
+      "a": "Poults"
+     }
+    ]
+   },
+   {
+    "name": "Pies & Sides",
+    "clues": [
+     {
+      "v": 200,
+      "q": "This orange gourd is the star of the most popular Thanksgiving pie.",
+      "a": "Pumpkin"
+     },
+     {
+      "v": 400,
+      "q": "Candied sweet potatoes are often topped with these puffy white treats.",
+      "a": "Marshmallows"
+     },
+     {
+      "v": 600,
+      "q": "Cranberries grow on low vines in wet fields called these.",
+      "a": "Bogs"
+     },
+     {
+      "v": 800,
+      "q": "Green bean casserole was invented in 1955 in the test kitchen of this soup company.",
+      "a": "Campbell's"
+     },
+     {
+      "v": 1000,
+      "q": "Pumpkin pie spice usually includes cinnamon, ginger, cloves and this spice, grated from a seed.",
+      "a": "Nutmeg"
+     }
+    ]
+   },
+   {
+    "name": "Parades & Football",
+    "clues": [
+     {
+      "v": 200,
+      "q": "The famous Macy's Thanksgiving Day Parade marches through this city.",
+      "a": "New York City"
+     },
+     {
+      "v": 400,
+      "q": "Charlie Brown's pet beagle is a favorite giant balloon in the Macy's parade.",
+      "a": "Snoopy"
+     },
+     {
+      "v": 600,
+      "q": "The Detroit Lions and this Texas team traditionally host the NFL's Thanksgiving games.",
+      "a": "The Dallas Cowboys"
+     },
+     {
+      "v": 800,
+      "q": "The first Macy's parade in 1924 featured live animals borrowed from the zoo in this New York park.",
+      "a": "Central Park"
+     },
+     {
+      "v": 1000,
+      "q": "In 1927 this cartoon cat became the first character balloon in the Macy's parade.",
+      "a": "Felix the Cat"
+     }
+    ]
+   },
+   {
+    "name": "Fall & Harvest",
+    "clues": [
+     {
+      "v": 200,
+      "q": "Leaves change color in this season, also called autumn.",
+      "a": "Fall"
+     },
+     {
+      "v": 400,
+      "q": "This green pigment in leaves breaks down in the fall, revealing the oranges and yellows underneath.",
+      "a": "Chlorophyll"
+     },
+     {
+      "v": 600,
+      "q": "The first day of fall, when day and night are about equal, is called the autumn this.",
+      "a": "Equinox"
+     },
+     {
+      "v": 800,
+      "q": "When daylight saving time ends in the fall, clocks move in this direction.",
+      "a": "Back (one hour)"
+     },
+     {
+      "v": 1000,
+      "q": "In Greek myth, the original \"horn of plenty,\" or cornucopia, was the horn of this animal.",
+      "a": "A goat"
+     }
+    ]
+   }
+  ],
+  "final": {
+   "category": "White House Traditions",
+   "q": "In 1989 this president formally \"pardoned\" a Thanksgiving turkey, the first official pardon of the now-annual tradition.",
+   "a": "George H. W. Bush"
+  }
+ },
+ {
+  "name": "Family Movie & Music Night",
+  "dailyDoubles": 1,
+  "categories": [
+   {
+    "name": "Disney & Pixar",
+    "clues": [
+     {
+      "v": 200,
+      "q": "In Frozen, this goofy snowman loves warm hugs.",
+      "a": "Olaf"
+     },
+     {
+      "v": 400,
+      "q": "This pull-string cowboy sheriff is Andy's favorite toy in Toy Story.",
+      "a": "Woody"
+     },
+     {
+      "v": 600,
+      "q": "In this Pixar film, a rat named Remy dreams of being a Paris chef.",
+      "a": "Ratatouille"
+     },
+     {
+      "v": 800,
+      "q": "Simba's journey, set to \"Circle of Life,\" is told in this 1994 Disney film.",
+      "a": "The Lion King"
+     },
+     {
+      "v": 1000,
+      "q": "In Inside Out, the emotions are Joy, Sadness, Anger, Fear and this one.",
+      "a": "Disgust"
+     }
+    ]
+   },
+   {
+    "name": "Family Favorites",
+    "clues": [
+     {
+      "v": 200,
+      "q": "A boy named Harry discovers he is a wizard and attends Hogwarts.",
+      "a": "Harry Potter"
+     },
+     {
+      "v": 400,
+      "q": "Eight-year-old Kevin McCallister defends his house from burglars when his family accidentally leaves him behind.",
+      "a": "Home Alone"
+     },
+     {
+      "v": 600,
+      "q": "Neighborhood kids fear \"The Beast\" behind the fence in this 1993 baseball movie.",
+      "a": "The Sandlot"
+     },
+     {
+      "v": 800,
+      "q": "In this 1992 film about a women's baseball league, Tom Hanks says, \"There's no crying in baseball!\"",
+      "a": "A League of Their Own"
+     },
+     {
+      "v": 1000,
+      "q": "Elliott lures E.T. out of hiding with this candy.",
+      "a": "Reese's Pieces"
+     }
+    ]
+   },
+   {
+    "name": "Songs & Singers",
+    "clues": [
+     {
+      "v": 200,
+      "q": "Michael Jackson was known by this royal nickname.",
+      "a": "The King of Pop"
+     },
+     {
+      "v": 400,
+      "q": "John, Paul, George and Ringo made up this band.",
+      "a": "The Beatles"
+     },
+     {
+      "v": 600,
+      "q": "This singer-songwriter's Eras Tour became one of the biggest concert tours ever.",
+      "a": "Taylor Swift"
+     },
+     {
+      "v": 800,
+      "q": "\"Don't Stop Believin'\" is the signature song of this rock band.",
+      "a": "Journey"
+     },
+     {
+      "v": 1000,
+      "q": "This 1971 John Lennon song imagines a world with no possessions and no countries.",
+      "a": "Imagine"
+     }
+    ]
+   },
+   {
+    "name": "TV & Cartoons",
+    "clues": [
+     {
+      "v": 200,
+      "q": "This square yellow sea sponge lives in a pineapple under the sea.",
+      "a": "SpongeBob SquarePants"
+     },
+     {
+      "v": 400,
+      "q": "This Australian cartoon follows a blue heeler pup and her family.",
+      "a": "Bluey"
+     },
+     {
+      "v": 600,
+      "q": "Ross, Rachel, Monica, Chandler, Joey and Phoebe are the six friends in this sitcom.",
+      "a": "Friends"
+     },
+     {
+      "v": 800,
+      "q": "The sitcom The Office is set at a paper company in Scranton, Pennsylvania, called this.",
+      "a": "Dunder Mifflin"
+     },
+     {
+      "v": 1000,
+      "q": "Sheriff Andy Taylor kept the peace in this fictional North Carolina town.",
+      "a": "Mayberry"
+     }
+    ]
+   },
+   {
+    "name": "Who Said It?",
+    "clues": [
+     {
+      "v": 200,
+      "q": "\"To infinity and beyond!\" is the catchphrase of this space ranger toy.",
+      "a": "Buzz Lightyear"
+     },
+     {
+      "v": 400,
+      "q": "\"May the Force be with you\" is a line from this space-adventure series.",
+      "a": "Star Wars"
+     },
+     {
+      "v": 600,
+      "q": "\"Just keep swimming\" is the motto of this forgetful blue fish.",
+      "a": "Dory"
+     },
+     {
+      "v": 800,
+      "q": "In The Wizard of Oz, this girl says, \"There's no place like home.\"",
+      "a": "Dorothy"
+     },
+     {
+      "v": 1000,
+      "q": "\"Life is like a box of chocolates\" is a line from this 1994 film.",
+      "a": "Forrest Gump"
+     }
+    ]
+   }
+  ],
+  "final": {
+   "category": "Disney Songs",
+   "q": "The song \"Be Our Guest\" is from this 1991 Disney film, whose heroine, Belle, loves to read.",
+   "a": "Beauty and the Beast"
   }
  }
 ] };

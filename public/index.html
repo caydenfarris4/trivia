@@ -515,7 +515,7 @@ function viewLobby(){
 }
 
 const GAMES=[
-  {id:'jeopardy',icon:'🎯',name:'THE BIG BOARD',color:'#4f7bff',tag:'Four full Jeopardy boards. Daily Double, secret-wager Final round.',
+  {id:'jeopardy',icon:'🎯',name:'THE BIG BOARD',color:'#4f7bff',tag:'Full Jeopardy boards. Daily Double, secret-wager Final round.',
     info:b=>b.boards.length+' full boards',start:()=>JP.start(chosenBoard())},
   {id:'globetrotters',icon:'🌍',name:'GLOBE TROTTERS',color:'#2fd573',live:true,tag:'GeoGuessr-style. Everyone joins on their phone, drops a pin, and scores by how close they get.',
     start:()=>ROOM.post('/api/host/start')},
