@@ -49,6 +49,19 @@ function readObjects(txt) {
   const head = (rows.shift() || []).map(h => h.trim());
   return rows.map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || '').trim()])));
 }
+// Photo credits (Wikimedia Commons licenses ask for the author, the license and a link). Shown at every reveal and on /credits.
+const cleanAuthor = a => String(a || '').split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, 90);
+const httpsUrl = u => /^https:\/\/[\w.-]+\/[^\s"'<>]*$/.test(String(u || '')) ? String(u) : '';
+function licenseLink(name) {
+  const s = String(name || '').trim();
+  let m;
+  if ((m = /^CC[ -]BY[ -]SA[ -](\d\.\d)/i.exec(s))) return 'https://creativecommons.org/licenses/by-sa/' + m[1] + '/';
+  if ((m = /^CC[ -]BY[ -](\d\.\d)/i.exec(s))) return 'https://creativecommons.org/licenses/by/' + m[1] + '/';
+  if (/^CC0/i.test(s)) return 'https://creativecommons.org/publicdomain/zero/1.0/';
+  if (/^(public domain|pd)/i.test(s)) return 'https://creativecommons.org/publicdomain/mark/1.0/';
+  if (/^FAL/i.test(s)) return 'https://artlibre.org/licence/lal/en/';
+  return '';
+}
 function loadPlaces() {
   const imgs = {};
   try { readObjects(imagesCsv).forEach(o => { if (o.id && o.image_url) imgs[o.id] = o; }); } catch (e) {}
@@ -57,13 +70,15 @@ function loadPlaces() {
     .map(o => {
       let img = null;
       if (o.image_file) img = { url: '/img/' + encodeURIComponent(o.image_file), credit: '' };
-      else if (imgs[o.id]) { const m = imgs[o.id]; img = { url: m.image_url, credit: [m.author, m.license].filter(Boolean).join(' · ') }; }
+      else if (imgs[o.id]) { const m = imgs[o.id], au = cleanAuthor(m.author); img = { url: m.image_url, credit: [au, m.license].filter(Boolean).join(' · '), author: au, license: m.license || '', source: httpsUrl(m.commons_page), licenseUrl: licenseLink(m.license) }; }
       return { id: o.id, name: o.name, country: o.country, continent: o.continent, category: o.category, lat: +o.lat, lon: +o.lon, radius: +o.radius_km || 0, difficulty: o.difficulty, blurb: o.reveal_blurb, img };
     });
 }
 const PLACES = loadPlaces();
 // Globe Trotters is PHOTO ONLY: the place is the answer, so its name is never shown while guessing. Only places with a photo are used.
 const PHOTO_PLACES = PLACES.filter(p => p.img);
+// Public list for /credits: place name, photographer, license, links. No coordinates and no photo URLs (nothing that helps with guessing).
+const CREDITS = PHOTO_PLACES.map(p => ({ name: p.name, country: p.country, author: p.img.author || '', license: p.img.license || '', licenseUrl: p.img.licenseUrl || '', source: p.img.source || '', own: !p.img.license && !p.img.author })).sort((a, b) => a.name.localeCompare(b.name));
 
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371, r = Math.PI / 180, dl = (lat2 - lat1) * r, dg = (lon2 - lon1) * r;
@@ -264,7 +279,7 @@ export class Game extends DurableObject {
       if (r.settings.game === 'spotthefake') {
         const counts = [0, 0, 0]; for (const p of this.players()) if (p.answer != null) counts[p.answer]++;
         v.answer = { fake: pl.fakeIdx, why: pl.why, topic: pl.topic, statements: pl.cards.map(c => ({ t: c.t, fake: c.fake })), counts };
-      } else v.answer = { name: pl.name, country: pl.country, lat: pl.lat, lon: pl.lon, radius: pl.radius, blurb: pl.blurb, credit: pl.img ? pl.img.credit : '' };
+      } else v.answer = { name: pl.name, country: pl.country, lat: pl.lat, lon: pl.lon, radius: pl.radius, blurb: pl.blurb, credit: pl.img ? pl.img.credit : '', creditAuthor: pl.img ? pl.img.author || '' : '', creditLicense: pl.img ? pl.img.license || '' : '', creditUrl: pl.img ? pl.img.source || '' : '', licenseUrl: pl.img ? pl.img.licenseUrl || '' : '' };
       v.results = r.results;
     }
     if (role === 'host') {
@@ -493,6 +508,7 @@ async function pages(request, env, url) {
   const p = url.pathname;
   if (p === '/' || p === '/play' || p === '/play.html') return pageFromAssets(env, request, '/play.html', true);   // players: enter the game code
   if (p === '/login' || p === '/login.html') return pageFromAssets(env, request, '/login.html', true);
+  if (p === '/credits' || p === '/credits.html') return pageFromAssets(env, request, '/credits.html', true);              // public: photo and map credits
   const token = cookieOf(request, 'gn_host');
   const needHost = async () => token ? await authStub(env).user(token) : null;
   if (p === '/host' || p === '/index.html') {                                                                         // the host app: login required
@@ -529,6 +545,7 @@ async function api(request, env, url) {
     return json({ provider: 'osm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', maxZoom: 18,
       attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }, 200, { 'cache-control': 'private, max-age=300' });
   }
+  if (p === '/api/credits') return json({ photos: CREDITS }, 200, { 'cache-control': 'public, max-age=300' });
   if (p === '/api/whoami') return json(await auth.whoami(token));
   if (p === '/api/login' || p === '/api/signup') {
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
