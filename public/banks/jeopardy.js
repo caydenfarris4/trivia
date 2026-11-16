@@ -2,7 +2,7 @@
 // Source: jeopardy_bank (1).csv. To add a board, copy one of the objects below and edit it.
 //
 // Format:
-//   board:      { name, dailyDoubles (how many are hidden, default 1), categories:[...], final }
+//   board:      { name, style ('family' or 'trivia'; missing = trivia, used by the Mix & match filter), dailyDoubles (how many are hidden, default 1), categories:[...], final }
 //   category:   { name, clues:[ { v: dollar value, q: clue text, a: answer }, ... ] } easiest -> hardest
 //   final:      { category, q, a }
 window.BANKS = window.BANKS || {};
@@ -653,6 +653,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "World Tour: History & Geography",
+  "style": "trivia",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -814,6 +815,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "The Sports Page",
+  "style": "trivia",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -975,6 +977,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "Thanksgiving Table",
+  "style": "family",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -1136,6 +1139,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "Family Movie & Music Night",
+  "style": "family",
   "dailyDoubles": 1,
   "categories": [
    {
