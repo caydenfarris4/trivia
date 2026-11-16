@@ -27,6 +27,9 @@ Find it on **Wikimedia Commons** (use the Commons search API or the place's Wiki
 5. Be licensed **CC0, public domain, CC BY or CC BY-SA**, and you must record the photographer's name cleanly in `author` (no e-mail addresses, no line breaks, at most 90 characters; for a public-domain agency photo write the agency). **Never** NonCommercial (NC), NoDerivatives (ND), GFDL, or "fair use" files.
 6. Use the Commons **thumbnail** URL at **1920px**: `https://thumb.wikimedia.org/wikipedia/commons/thumb/<a>/<ab>/<File>/1920px-<File>`. The easiest way to get it is the Commons API: `action=query&titles=File:<name>&prop=imageinfo&iiprop=url|extmetadata|size&iiurlwidth=1920` and use `thumburl` (drop the `?utm_...` part). `commons_page` is the `descriptionurl`.
 
+## Network note (read this)
+In the scheduled sandbox the HTTPS proxy usually lets `curl` reach only Wikimedia hosts (Commons, Wikipedia, upload/thumb). Wikidata, OpenStreetMap/Nominatim, GeoNames and UNESCO may answer 403. **WebSearch is not restricted that way**: use it, and read the pages/snippets it returns, to get genuinely independent sources (UNESCO, Britannica, national park or tourism sites, geohack pages) for coordinates and facts. Wikipedia and Commons can also return 429 for many minutes after a burst: space your calls (3-5 seconds), cache what you fetch, and do not re-download things you already have.
+
 ## Rules
 - Use WebSearch / the Commons and Wikipedia APIs (`curl` works through the proxy). Verify with sources; do not trust memory for coordinates, and **never invent** a place, a photo or a source.
 - **Family-clean:** no alcohol, coffee/tea, tobacco or gambling themes (no casinos, wine regions, breweries); nothing grim (battlefields, disasters, atrocity sites). If a place is mainly known for one of those, skip it.
