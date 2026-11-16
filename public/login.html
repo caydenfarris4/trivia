@@ -19,6 +19,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 .btn{font-family:Impact,"Arial Black",sans-serif;letter-spacing:1.5px;font-size:24px;color:#2a1700;background:linear-gradient(#ffe27a,var(--gold2));border:0;border-bottom:5px solid #a65f00;border-radius:14px;padding:14px 20px;width:100%;text-transform:uppercase;cursor:pointer}
 .btn:active{transform:translateY(3px);border-bottom-width:2px}
 .btn:disabled{filter:grayscale(1) brightness(.6)}
+.eye{align-self:center;display:flex;gap:8px;align-items:center;font-size:15px;color:var(--mute);cursor:pointer;user-select:none}.eye input{width:20px;height:20px;padding:0;accent-color:var(--gold)}
 .err{color:var(--bad);min-height:1.2em}
 a{color:var(--mute)}
 </style>
@@ -31,6 +32,7 @@ a{color:var(--mute)}
   <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
   <input id="pw2" type="password" placeholder="Confirm password" autocomplete="new-password" hidden>
   <input id="setup" type="password" placeholder="Setup code" autocomplete="off" hidden>
+  <label class="eye"><input type="checkbox" id="eye"> 👁 Show password</label>
   <div class="err" id="err" role="alert"></div>
   <button class="btn" id="go" type="submit">Log in</button>
   <a href="/">Joining a game? Enter your code here</a>
@@ -52,6 +54,7 @@ let signup = false;
     }
   } catch (x) { $('#err').textContent = 'Can\'t reach the server.'; }
 })();
+$('#eye').onchange = () => { for (const id of ['#pw', '#pw2', '#setup']) $(id).type = $('#eye').checked ? 'text' : 'password'; };
 $('#f').onsubmit = async e => {
   e.preventDefault();
   $('#err').textContent = '';
