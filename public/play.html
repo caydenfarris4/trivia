@@ -87,6 +87,7 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
   <div class="err" id="err"></div>
   <button class="btn" id="joinbtn">Join Game</button>
   <a class="hostlink" href="/login">Host login</a>
+  <a class="hostlink" href="/credits">Photo &amp; map credits</a>
 </div></section>
 
 <section id="s-wait"><div class="center">
@@ -144,6 +145,8 @@ input{font-size:22px;padding:14px;border-radius:12px;border:3px solid var(--gold
 'use strict';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// "Photo: Author · License" linked to the source page and the license text
+const photoCredit=a=>{const lnk=(u,t)=>u&&/^https:\/\//.test(u)?'<a href="'+esc(u)+'" target="_blank" rel="noopener" style="color:inherit">'+esc(t)+'</a>':esc(t);return 'Photo: '+lnk(a.creditUrl,a.creditAuthor||'Wikimedia Commons')+(a.creditLicense?' · '+lnk(a.licenseUrl,a.creditLicense):'');};
 let me=null,st=null,es=null,off=0,map=null,layer=null,pin=null,choice=null,qsel=null,iv=null,view='';
 try{me=JSON.parse(localStorage.getItem('gt.me')||'null');}catch(e){}
 const show=id=>{document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));};
@@ -359,7 +362,7 @@ function render(){
       <div class="line">It was <b>${esc(a.name)}</b>, ${esc(a.country)}</div>
       <div class="sm">#${st.me.rank} of ${st.me.of} · ${st.me.score.toLocaleString()} pts total</div>
       ${myTeam()?`<div class="sm">Team ${esc(myTeam().name)}: #${teamRank(myTeam())} of ${st.teams.length} · ${myTeam().score.toLocaleString()} pts (+${myTeam().last.toLocaleString()})</div>`:''}</div>`;
-    $('#prompt').innerHTML=`<div><small>${esc(a.country.toUpperCase())}</small><h2>${esc(a.name)}</h2><div class="sub" style="font-size:13px">${esc(a.blurb||'')}</div></div>`;
+    $('#prompt').innerHTML=`<div><small>${esc(a.country.toUpperCase())}</small><h2>${esc(a.name)}</h2><div class="sub" style="font-size:13px">${esc(a.blurb||'')}</div>${a.credit?`<div class="sub" style="font-size:11px;opacity:.75;margin-top:4px">${photoCredit(a)}</div>`:''}</div>`;
   }
 }
 if(me){connect();}

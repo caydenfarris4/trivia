@@ -40,7 +40,7 @@ Flow: **setup (host picks Globe Trotters) → lobby → (guess → reveal) × N 
 2. Players open that address on their phone (`/` serves `play.html`), type code + name. Up to the host's player limit (`max` setting, 4–20). Names pop up on the big screen as people join.
 3. In the same lobby the host picks rounds (dropdown: 5, 8, 10, 15, 20), seconds (dropdown: 20, 30, 45, 60, 90), category, then presses **Start**. The server accepts wider values than the dropdowns offer (rounds 3–30, seconds 15–180, max players 4–20) and clamps anything outside that range.
 4. Each round a **photo of the place** goes to every phone and to the host screen. **Globe Trotters is photo-only: the place's name is never shown while guessing** (the server does not even send it before the reveal), so only places that have a photo are used (if there are fewer photo places than the chosen rounds, the game has fewer rounds). With **no** photos at all the lobby shows a warning and Start is disabled. Players tap a map to drop/move a pin and press **Lock in**. The round ends when the timer ends **or every connected player has locked**. A placed-but-unlocked pin still counts at timeout.
-5. Reveal: host screen shows a Leaflet map with the answer (⭐ + radius circle), all pins, dashed lines, a ranked list, the blurb and photo credit. Phones show their own distance, points and rank. The host clicks **Next Round ▸** to send the next place.
+5. Reveal: host screen shows a Leaflet map with the answer (⭐ + radius circle), all pins, dashed lines, a ranked list, the blurb and the **photo credit** ("Photo: <photographer> · <license>", linked to the Commons file page and the license text; phones show the same line under the blurb). A public **`/credits`** page (linked from the join screen and the host setup screen; data from `GET /api/credits`: place, photographer, license, links; no coordinates or photo URLs) lists every photo plus the map credits (OpenStreetMap, CARTO, Leaflet). Authors in `globetrotters_images.csv` must be clean one-line names; allowed licenses are CC0, public domain, CC BY and CC BY-SA (no NC/ND/GFDL). Phones show their own distance, points and rank. The host clicks **Next Round ▸** to send the next place.
 6. After the last round: podium on the host screen, final rank on phones. **Play Again** returns to the lobby with the same players and zeroed scores.
 
 **Scoring (owner-specified, do not change without asking).** A round is worth up to **5,000**, half for knowing what the place is and half for the pin:
@@ -125,6 +125,7 @@ GameNight/
     index.html           ← HOST app: setup, lobby, all four games' host UIs, CSS, sound engine
     play.html            ← PLAYER page at `/`: enter code + name → (team badge) → map → result
     login.html           ← host login + first-time "create host account" page (/login)
+    credits.html         ← public photo & map credits page (/credits), filled from /api/credits
     img/                 ← OPTIONAL local photos referenced by the CSV `image_file` column (served at /img/<file>)
     banks/
       jeopardy.js        ← window.BANKS.jeopardy  = { boards: [...] }
@@ -137,6 +138,9 @@ GameNight/
   scripts/
     validate_board.js    ← checks a Big Board candidate (or `--bank`) for structure, value ladder, banned words, duplicates
     add_board.js         ← validates, then appends a candidate to public/banks/jeopardy.js
+    validate_location.js ← checks candidate Globe Trotters places (static, or `--online` against Wikipedia/Commons); `--stats` shows the spread
+    add_locations.js     ← appends approved places to globetrotters_bank.csv + globetrotters_images.csv (keeps CRLF)
+  agents/weekly-locations/ ← the weekly place-finding agent tree: README.md (runbook), scout.md, qa.md, history.md (see §6.2)
   agents/weekly-board/   ← the weekly board agent tree: README.md (runbook), researcher.md, qa.md, history.md (see §6.1)
 ```
 Each bank `.js` file begins with a comment that documents its own format. Read it before editing.
@@ -203,6 +207,9 @@ Sections `s-join`, `s-wait`, `s-play`, `s-end`. One Leaflet map instance reused 
 
 ### 6.1 The weekly board agent tree
 Once a week a **scheduled Claude Code task** runs the tree in `agents/weekly-board/README.md` and ends with **one pull request that adds one board** to `public/banks/jeopardy.js`; the owner reviews and merges it (agents never merge). The tree: an **orchestrator** (the scheduled session) picks a brief from a 4-week rotation (trivia / family / pop-culture trivia / seasonal family), a **researcher agent** (`researcher.md`) designs the board and verifies every clue with credible sources, then an independent **QA agent** (`qa.md`) re-verifies all 26 clues itself and returns PASS or FAIL (up to 2 revision rounds). `scripts/validate_board.js` enforces the mechanical rules (5×5, values 200-1000, unique category names across the bank, no near-duplicate clues, blocked words such as alcohol/coffee/tea/tobacco); `scripts/add_board.js` appends the board. Every board needs `"style": "family"` or `"trivia"` (the Mix & match filter reads it). To change the schedule or prompt, edit the scheduled task (`list_triggers` / `update_trigger`), to change the rules, edit the three markdown files.
+
+### 6.2 The weekly location agent tree (Globe Trotters)
+A second scheduled Claude Code task runs `agents/weekly-locations/README.md` and ends with **one pull request that adds up to 5 new places**; the owner reviews and merges it (agents never merge). A **scout agent** (`scout.md`) finds cool places for the week's theme (natural wonders / vacation spots / cities & culture / hidden gems), picks the best Wikimedia Commons photo and records the coordinates with two sources; `scripts/validate_location.js --online` then checks mechanically (photo downloads and is ≥1280 px, landscape; the Commons license matches and is allowed; the Wikipedia article's coordinates and the photo's own GPS tag agree with the claimed coordinates; no duplicates within 2 km; no banned words). An independent **QA agent** (`qa.md`) re-verifies each place's coordinates with its own sources, **looks at the photo** (right place, sharp, landscape, caption-free, not a map/flag), and checks license, credit, difficulty, radius and the fun fact; a place passes only with no open blocker. Up to 2 revision rounds; `scripts/add_locations.js --approved <qa_report> --max 5` adds only the passing places. Node's built-in `fetch` ignores the HTTPS proxy some sandboxes require, so the scripts' live checks shell out to `curl`.
 
 ## 7. Testing
 

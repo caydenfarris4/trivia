@@ -75,7 +75,7 @@ function validate(board, bank, opts = {}) {
   return { errors, warnings };
 }
 
-module.exports = { validate, loadBank, BANK };
+module.exports = { validate, loadBank, BANK, BANNED };
 
 if (require.main === module) {
   const arg = process.argv[2];

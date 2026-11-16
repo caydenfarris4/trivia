@@ -486,6 +486,9 @@ function boardCards(){
   const pl=playedBoards(),sel=chosenBoard();
   return`<div class="cards" style="margin:8px auto;max-width:1000px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"><button class="card sm${roster.mix?' picked':''}" style="--a:#ff9d1c" data-act="pick-mix"><h2>🧩 MIX &amp; MATCH</h2><p>Build your own board from any categories, or roll a random one.</p><span class="tag">CUSTOM</span></button>${BANKS.jeopardy.boards.map((b,i)=>`<button class="card sm${!roster.mix&&i===sel?' picked':''}" style="--a:#4f7bff" data-act="pick-board" data-i="${i}"><h2>${esc(b.name.toUpperCase())}</h2><p>${boardCats(b)}</p>${pl.includes(i)?'<span class="tag warn">PLAYED</span>':'<span class="tag">NEW</span>'}</button>`).join('')}</div>`;
 }
+// "Photo: Author · License" with links to the source page and the license text (Commons license terms ask for these)
+const photoCredit=a=>{const lnk=(u,t)=>u&&/^https:\/\//.test(u)?'<a href="'+esc(u)+'" target="_blank" rel="noopener" style="color:inherit">'+esc(t)+'</a>':esc(t);
+  return 'Photo: '+lnk(a.creditUrl,a.creditAuthor||'Wikimedia Commons')+(a.creditLicense?' · '+lnk(a.licenseUrl,a.creditLicense):'');};
 function viewSetup(msg){
   GT.stop();SF.stop();S.screen='setup';G=null;T.stop();Snd.stop();renderBoard();
   $('#view').innerHTML=`<h1 class="logo">GAME NIGHT<span>LIVE</span></h1>
@@ -499,7 +502,8 @@ function viewSetup(msg){
   <div class="lbl sm">3 · Teams</div>
   <div class="settings"><label>Split everyone into <select data-chg="teams">${[0,2,3,4,5,6].map(v=>`<option value="${v}"${roster.teams===v?' selected':''}>${v?v+' teams':'No teams (everyone for themselves)'}</option>`).join('')}</select></label></div>
   <div class="err" id="seterr" role="alert" style="color:var(--bad);text-align:center;min-height:1.2em">${msg?esc(msg):''}</div>
-  <button class="btn xl" id="gobtn" data-act="go">Open the lobby ▶</button></div>`;
+  <button class="btn xl" id="gobtn" data-act="go">Open the lobby ▶</button></div>
+  <div class="hint" style="text-align:center;margin-top:10px"><a href="/credits" target="_blank" rel="noopener" style="color:inherit">Photo &amp; map credits</a></div>`;
   $('#rng').oninput=e=>setCount(+e.target.value);
 }
 function setCount(n){roster.n=Math.max(4,Math.min(20,n));$('#cnt').textContent=roster.n;$('#rng').value=roster.n;}
@@ -711,7 +715,7 @@ const GT={
     const a=s.answer,fk=d=>d==null?'no guess':(d<10?d.toFixed(1):Math.round(d).toLocaleString())+' km';
     $('#view').innerHTML=`<div id="gtr"><div class="qhead" style="max-width:none"><span>ROUND ${s.idx+1} / ${s.total}</span><span>${esc(a.name.toUpperCase())} · ${esc(a.country.toUpperCase())}</span></div>
       <div class="gtrev"><div id="gtmap"></div>
-      <div class="gtlist"><div class="note" style="font-size:16px;text-align:left;color:var(--good)">${s.results.filter(r=>r.correct).length} of ${s.results.length} knew it · ✅ knew what it is (+2,500) · 📍 pin (up to +2,500)</div><div class="note" style="font-size:16px;text-align:left">${esc(a.blurb||'')}${a.credit?`<br><small style="color:var(--mute)">Photo: ${esc(a.credit)}</small>`:''}</div>
+      <div class="gtlist"><div class="note" style="font-size:16px;text-align:left;color:var(--good)">${s.results.filter(r=>r.correct).length} of ${s.results.length} knew it · ✅ knew what it is (+2,500) · 📍 pin (up to +2,500)</div><div class="note" style="font-size:16px;text-align:left">${esc(a.blurb||'')}${a.credit?`<br><small style="color:var(--mute)">${photoCredit(a)}</small>`:''}</div>
       ${s.teams?s.teams.slice().sort((x,y)=>y.score-x.score).map((t,i)=>`<div class="rrow" style="--c:${t.color}"><b>${i+1}</b><span>Team ${esc(t.name)}</span><em>${t.score.toLocaleString()} total</em><strong>+${t.last.toLocaleString()}</strong></div>`).join('')+'<div class="lbl sm" style="margin:6px 0 0">Players</div>':''}
       ${s.results.slice().sort((x,y)=>y.pts-x.pts).map((r,i)=>`<div class="rrow" style="--c:${r.color}"><b>${i+1}</b><span>${esc(r.name)} ${r.correct?'✅':'❌'}</span><em>${fk(r.dist)}</em><strong>+${r.pts.toLocaleString()}</strong></div>`).join('')}</div></div>
       <div class="row"><button class="btn good" data-act="gt-next">${s.idx+1>=s.total?'Final Scores':'Next Round ▸'}</button></div></div>`;
