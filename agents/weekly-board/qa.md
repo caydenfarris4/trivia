@@ -28,11 +28,13 @@ Write JSON to the report path:
 {
   "verdict": "PASS" or "FAIL",
   "summary": "2-4 sentences for the owner reviewing the pull request",
-  "issues": [ { "where": "Category Name|600 or final or board", "problem": "what is wrong", "evidence": "URL or quote", "fix": "the corrected clue/answer, or 'replace the clue'" } ],
+  "issues": [ { "where": "Category Name|600 or final or board", "severity": "blocker" or "advisory", "problem": "what is wrong", "evidence": "URL or quote", "fix": "the corrected clue/answer, or 'replace the clue'" } ],
   "verified": [ { "where": "Category Name|200", "ok": true, "source": "URL you actually opened" } ]
 }
 ```
 
+- **Every issue has a `severity`.** `"blocker"` = something that must not reach a game night: a false, misleading or unsupported fact (does not meet the two-credible-source standard), an answer a host could wrongly reject or that has several right answers, content that is off-limits for the family, wording that will go stale, a duplicate of an existing clue/topic. `"advisory"` = polish a human may want but that does not make the board wrong: fine-tuning the difficulty order, a better wording, a nicer source, a slightly easy Final. A difficulty problem is a blocker **only** when a category is badly out of order (for example a $200 that adults would miss, or a $1000 that a high schooler would get at once), not for small swaps.
+- Give each issue a `severity` field in the JSON above. Do not raise new advisories forever: list what you honestly see once.
 - `verified` must list all 26 clues. A clue you could not confirm to the standard above is **not ok**: it goes in `issues`.
-- **PASS only if there are zero open issues** (every problem is fixed or none was found) and every clue is verified with a source you opened yourself. Anything less is FAIL. Do not soften: a single wrong fact fails the board.
-- Final reply: the verdict and the issue count, nothing else you need to explain; the file has the detail.
+- **PASS if there are zero open blockers** and every clue is verified with a source you opened yourself (advisories do not fail the board; they are shown to the owner in the pull request). **FAIL if any blocker is open.** Do not soften: a single wrong or unsupported fact is a blocker.
+- Final reply: the verdict and the counts of blockers and advisories, nothing else you need to explain; the file has the detail.
