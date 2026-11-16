@@ -2,7 +2,7 @@
 // Source: jeopardy_bank (1).csv. To add a board, copy one of the objects below and edit it.
 //
 // Format:
-//   board:      { name, dailyDoubles (how many are hidden, default 1), categories:[...], final }
+//   board:      { name, style ('family' or 'trivia'; missing = trivia, used by the Mix & match filter), dailyDoubles (how many are hidden, default 1), categories:[...], final }
 //   category:   { name, clues:[ { v: dollar value, q: clue text, a: answer }, ... ] } easiest -> hardest
 //   final:      { category, q, a }
 window.BANKS = window.BANKS || {};
@@ -653,6 +653,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "World Tour: History & Geography",
+  "style": "trivia",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -814,6 +815,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "The Sports Page",
+  "style": "trivia",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -975,6 +977,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "Thanksgiving Table",
+  "style": "family",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -1136,6 +1139,7 @@ window.BANKS.jeopardy = { boards: [
  },
  {
   "name": "Family Movie & Music Night",
+  "style": "family",
   "dailyDoubles": 1,
   "categories": [
    {
@@ -1293,6 +1297,168 @@ window.BANKS.jeopardy = { boards: [
    "category": "Disney Songs",
    "q": "The song \"Be Our Guest\" is from this 1991 Disney film, whose heroine, Belle, loves to read.",
    "a": "Beauty and the Beast"
+  }
+ },
+ {
+  "name": "Winter Wonderland Board",
+  "style": "family",
+  "dailyDoubles": 1,
+  "categories": [
+   {
+    "name": "Carols & the Christmas Story",
+    "clues": [
+     {
+      "v": 200,
+      "q": "The Gospels of Matthew and Luke place the birth of Jesus in this town, about five miles south of Jerusalem.",
+      "a": "Bethlehem"
+     },
+     {
+      "v": 400,
+      "q": "In \"The Twelve Days of Christmas,\" this many golden rings arrive on the fifth day.",
+      "a": "Five (five golden rings)"
+     },
+     {
+      "v": 600,
+      "q": "\"Silent Night\" was first sung on Christmas Eve 1818 in a church in this alpine country.",
+      "a": "Austria"
+     },
+     {
+      "v": 800,
+      "q": "The \"Hallelujah\" chorus comes from this Handel oratorio, first performed in Dublin in 1742.",
+      "a": "Messiah"
+     },
+     {
+      "v": 1000,
+      "q": "This English hymn writer's 1719 poem based on Psalm 98 became the carol \"Joy to the World.\"",
+      "a": "Isaac Watts"
+     }
+    ]
+   },
+   {
+    "name": "Tree, Stocking & Star",
+    "clues": [
+     {
+      "v": 200,
+      "q": "This red-leaved plant from Mexico is a favorite Christmas decoration, named for a U.S. diplomat.",
+      "a": "Poinsettia"
+     },
+     {
+      "v": 400,
+      "q": "Legend says St. Nicholas tossed gold coins into the home of a poor family, where they landed in these items hung by the fire to dry.",
+      "a": "Stockings"
+     },
+     {
+      "v": 600,
+      "q": "In 1931 workers building this Manhattan complex put up a small tree that led to a famous annual tradition.",
+      "a": "Rockefeller Center"
+     },
+     {
+      "v": 800,
+      "q": "In 1848 a drawing of Queen Victoria and this German-born husband around a tree helped make Christmas trees popular in Britain.",
+      "a": "Prince Albert"
+     },
+     {
+      "v": 1000,
+      "q": "In 1882 this vice president of the Edison Electric Light Company lit the first electric Christmas tree, at his home in Manhattan.",
+      "a": "Edward Johnson (Edward Hibberd Johnson)"
+     }
+    ]
+   },
+   {
+    "name": "Christmas Around the World",
+    "clues": [
+     {
+      "v": 200,
+      "q": "Because it is in the Southern Hemisphere, Australia celebrates Christmas in this season.",
+      "a": "Summer"
+     },
+     {
+      "v": 400,
+      "q": "Mexican families reenact Mary and Joseph's search for shelter in nine nights of processions called Las this, Spanish for \"inns.\"",
+      "a": "Posadas (Las Posadas)"
+     },
+     {
+      "v": 600,
+      "q": "In this island nation, 13 Yule Lads leave small gifts in children's shoes in the days before Christmas.",
+      "a": "Iceland"
+     },
+     {
+      "v": 800,
+      "q": "In the Philippines, a star-shaped lantern called this decorates homes, and San Fernando holds a giant-version contest.",
+      "a": "Parol"
+     },
+     {
+      "v": 1000,
+      "q": "In Caracas, Venezuela, a Christmas tradition has worshippers glide to early Mass on these wheeled shoes.",
+      "a": "Roller skates (skating)"
+     }
+    ]
+   },
+   {
+    "name": "Snow & Winter Animals",
+    "clues": [
+     {
+      "v": 200,
+      "q": "Snow crystals have this many sides or arms, because of the way ice molecules arrange themselves.",
+      "a": "Six"
+     },
+     {
+      "v": 400,
+      "q": "The snowshoe hare changes its coat to this color for winter camouflage.",
+      "a": "White"
+     },
+     {
+      "v": 600,
+      "q": "In 1885 Vermont farmer Wilson Bentley made the first photo of a snowflake by attaching a camera to this instrument.",
+      "a": "Microscope"
+     },
+     {
+      "v": 800,
+      "q": "During the Antarctic winter, male emperor penguins keep an egg warm on their feet beneath a fold of skin on their lower belly called this.",
+      "a": "Brood pouch (also accept brood patch)"
+     },
+     {
+      "v": 1000,
+      "q": "Wood frogs can survive being frozen partly because their liver floods their cells with this sugar, which works like antifreeze.",
+      "a": "Glucose"
+     }
+    ]
+   },
+   {
+    "name": "Winter Games",
+    "clues": [
+     {
+      "v": 200,
+      "q": "In this Olympic sport, teams slide heavy granite stones across the ice while teammates sweep in front with brooms.",
+      "a": "Curling"
+     },
+     {
+      "v": 400,
+      "q": "This Winter Olympic sport combines cross-country skiing with rifle shooting.",
+      "a": "Biathlon"
+     },
+     {
+      "v": 600,
+      "q": "The first Winter Olympics, in 1924, were held in this French town at the foot of Mont Blanc.",
+      "a": "Chamonix"
+     },
+     {
+      "v": 800,
+      "q": "This small village in the Adirondacks of the Empire State hosted the Winter Olympics in 1932 and again in 1980.",
+      "a": "Lake Placid"
+     },
+     {
+      "v": 1000,
+      "q": "This Norwegian figure skater won Olympic gold in 1928, 1932 and 1936, then turned professional and toured as the star of an ice revue.",
+      "a": "Sonja Henie"
+     }
+    ]
+   }
+  ],
+  "final": {
+   "category": "Christmas on Stage",
+   "q": "Tchaikovsky's Nutcracker ballet follows Alexandre Dumas's retelling of an 1816 story about a Mouse King by this German writer, known by three initials.",
+   "a": "E.T.A. Hoffmann (accept Hoffmann)"
   }
  }
 ] };
